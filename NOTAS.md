@@ -107,12 +107,12 @@ mesmo tendo armazenamento e uso de fluidos, **não reconhece os líquidos do AE2
       (pré-existente do SCC; dá para mitigar com traduções do addon?)
 - [ ] Aguardando a lista completa do usuário (prints ajudam).
 
-## 5. Problemas com tarefas / autocrafting (usuário relatou; detalhes pendentes)
+## 6. Problemas com tarefas / autocrafting (usuário relatou; detalhes pendentes)
 
 - [ ] Aguardando os casos específicos (jobs travados? itens somem? máquina não
       encontrada?).
 
-## 6. Performance — acompanhamento
+## 7. Performance — acompanhamento
 
 - [ ] Usuário medir `/scc profile` com a Calculadora de Quebra Singularidade e
       mandar as linhas `sccadd breaking work`, `sccadd loot roll`,
@@ -120,7 +120,7 @@ mesmo tendo armazenamento e uso de fluidos, **não reconhece os líquidos do AE2
 - [ ] Avaliar depois: `fits` + inserção dupla (simular + real) na saída;
       cache de plano/tag filters; fairness do orçamento global entre máquinas.
 
-## 7. Integração AE2 — validação em jogo
+## 8. Integração AE2 — validação em jogo
 
 - [ ] Padrões AE2 com ingredientes no calculador SCC (config `[ae2] patternsInScc`).
 - [ ] Receitas SCC como padrões AE2 reais + push de ingredientes
