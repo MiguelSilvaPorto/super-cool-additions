@@ -79,7 +79,27 @@ Não dá para plugar um Storage Bus num bloco SCC e ver a rede como inventário.
 
 **Prioridade combinada:** implementar depois do filtro de variantes.
 
-## 4. Bugs de UI (usuário relatou; detalhes pendentes)
+## 4. Líquidos entre AE2 e SCC (pedido do usuário — novo)
+
+**Problema:** o AE2 tem líquidos na rede (ex.: água, image do terminal), e o SCC,
+mesmo tendo armazenamento e uso de fluidos, **não reconhece os líquidos do AE2**
+(nem o contrário).
+
+**Diagnóstico (confirmado no código):**
+- SCC tem suporte completo a fluidos: `NetworkView.fluidContents()`, `drainFluid`,
+  `insertFluid`, blocos de Fluid Storage no `SccRegistry`.
+- Mas a ponte AE2 do SCC só trata **itens**: `Ae2MeStore` e `Ae2Bridge.Storage`
+  checam apenas `AEItemKey` — **nenhum `AEFluidKey`** no pacote `compat/ae2`.
+- O AE2 19.2.18 tem fluidos como cidadãos de primeira classe (`AEFluidKey`).
+
+**Correção proposta (dois sentidos):**
+- [ ] **AE2 → SCC**: o Conector de Armazenamento num bloco AE2 também deve expor os
+      fluidos do ME para a rede SCC (hoje só itens).
+- [ ] **SCC → AE2**: a Antena deve montar os fluidos do SCC no grid (hoje
+      `Ae2Bridge.Storage.listStock` lista só itens).
+- [ ] Verificar o mesmo para produtos químicos (Mekanism) se aplicável.
+
+## 5. Bugs de UI (usuário relatou; detalhes pendentes)
 
 
 - [ ] Jade: `Missing config translation: config.jade.plugin_scc.*` — as opções do
