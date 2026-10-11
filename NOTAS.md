@@ -23,11 +23,13 @@ Quando o hard fingerprint muda, o SCC **nem tenta usar o cache**. Já quando só
 ("cache matches roughly") — exatamente o comportamento desejado.
 
 **Correção proposta (rápida, alto impacto):**
-- [ ] Reclassificar no fingerprint: mover **versões de mods** e os **campos de
-      config que afetam a análise** do hard para o soft (hard = só ids de mods +
-      "v62" + source), fazendo o cache ser **usado na hora** e atualizado em
-      background em vez de descartado.
-- [ ] Ganho esperado: fim dos 8-12 min "mortos" a cada update de pack/ajuste.
+- [x] **IMPLEMENTADO** — mixin `AnalysisFingerprintMixin` + `FingerprintExtra`:
+      hard print vira constante (formato segue protegido pelo cabeçalho `#SCC62`);
+      soft print passa a incluir versões de mods + configs que afetam a análise.
+      Config: `[analysis] resilientCache` (padrão true).
+- [ ] **Testar no ATM10**: 1ª abertura faz a última análise completa; da 2ª em
+      diante o log deve mostrar `analysis loaded from cache`. Depois, update de
+      pack/config deve usar o cache na hora + refresh em background.
 
 **Pedidos do usuário (features maiores):**
 - [ ] **Análise incremental/priorizada por busca**: mostrar receitas já analisadas
@@ -51,7 +53,33 @@ de variante e a lista polui.
 - [ ] **Botão novo "filtro"** no terminal para escolher o que mostrar (tudo ↔ limpo
       ↔ configurável).
 
-## 3. Bugs de UI (usuário relatou; detalhes pendentes)
+## 3. Fluxo de itens SCC ↔ AE2 — "Interface + Storage Bus" (pedido do usuário)
+
+**Pedido:** melhorar o fluxo de itens para funcionar "quase igual ao Interface +
+Storage Bus do AE2":
+- AE2, **via Storage Bus encostado num bloco do SCC**, vê **todos** os itens da
+  rede SCC — ida e volta (extrair e inserir).
+- O inverso (SCC via Storage Connector em bloco AE2) já funciona bem — manter.
+
+**Estado atual:** o SCC expõe a rede ao AE2 apenas pela **Antena de Rede** (mount
+automático de `MEStorage` no grid — sem partição/filtro/prioridade, e exige a antena).
+Não dá para plugar um Storage Bus num bloco SCC e ver a rede como inventário.
+
+**Investigação já feita (AE2 19.2.18):**
+- Existe `appeng.api.AECapabilities.ME_STORAGE` (`BlockCapability<MEStorage, Direction>`)
+  — é o que o Storage Bus consulta no bloco alvo.
+- Caminho: registrar `ME_STORAGE` (e/ou `Capabilities.ItemHandler.BLOCK`) nos blocos
+  do SCC com um `MEStorage`/`IItemHandler` virtual em cima do `NetworkView`.
+- Reaproveitar o padrão do próprio SCC (`Ae2MeStore`, `Ae2Bridge.Storage`) incluindo
+  a guarda anti-recursão (`BridgeGuard`).
+- Decidir onde expor: só na Antena (bridge dedicado) ou em **todo bloco de
+  armazenamento** (mais próximo de "pluga o bus em qualquer lugar").
+- Checar comportamento do Storage Bus com `IItemHandler` (slots virtuais, prioridade,
+  filtro por partição) vs `MEStorage` direto.
+
+**Prioridade combinada:** implementar depois do filtro de variantes.
+
+## 4. Bugs de UI (usuário relatou; detalhes pendentes)
 
 
 - [ ] Jade: `Missing config translation: config.jade.plugin_scc.*` — as opções do
@@ -59,12 +87,12 @@ de variante e a lista polui.
       (pré-existente do SCC; dá para mitigar com traduções do addon?)
 - [ ] Aguardando a lista completa do usuário (prints ajudam).
 
-## 3. Problemas com tarefas / autocrafting (usuário relatou; detalhes pendentes)
+## 5. Problemas com tarefas / autocrafting (usuário relatou; detalhes pendentes)
 
 - [ ] Aguardando os casos específicos (jobs travados? itens somem? máquina não
       encontrada?).
 
-## 4. Performance — acompanhamento
+## 6. Performance — acompanhamento
 
 - [ ] Usuário medir `/scc profile` com a Calculadora de Quebra Singularidade e
       mandar as linhas `sccadd breaking work`, `sccadd loot roll`,
@@ -72,7 +100,7 @@ de variante e a lista polui.
 - [ ] Avaliar depois: `fits` + inserção dupla (simular + real) na saída;
       cache de plano/tag filters; fairness do orçamento global entre máquinas.
 
-## 5. Integração AE2 — validação em jogo
+## 7. Integração AE2 — validação em jogo
 
 - [ ] Padrões AE2 com ingredientes no calculador SCC (config `[ae2] patternsInScc`).
 - [ ] Receitas SCC como padrões AE2 reais + push de ingredientes
