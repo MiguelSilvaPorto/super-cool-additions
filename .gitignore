@@ -1,0 +1,27 @@
+# Build
+build/
+out/
+.gradle/
+
+# Dev runs (worlds, logs, downloaded jars)
+run/
+
+# Third-party jars (not redistributable - see libs/README.md)
+libs/*.jar
+
+# Upstream reference clone
+SuperCoolCalculator/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# Misc
+*.log
+*.bak

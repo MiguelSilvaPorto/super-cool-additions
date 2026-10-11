@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.sccadd.mixin",
+  "plugin": "com.sccadd.mixin.SccAddMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BreakingCalculatorPerfMixin",
+    "NetworkBlockEntityInvoker",
+    "TerminalAe2PatternsMixin",
+    "Ae2ProviderPatternsMixin",
+    "Ae2NodePatternsMixin"
+  ],
+  "client": [
+    "client.CraftSimAe2Mixin",
+    "client.CustomRecipeBookMixin",
+    "client.Ae2TerminalScreenMixin",
+    "client.Ae2OfferPatternsMixin",
+    "client.AnalysisFingerprintMixin"
+  ],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,52 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "sccadd"
+version = "${version}"
+displayName = "Super Cool Additions"
+authors = "MiguelSP"
+description = '''
+An addon for SCC - Super Cool Calculator.
+
+Performance: the Breaking Calculator gets a hard, configurable time budget per
+tick, cheaper simulated drops (cached loot parameters, optional BlockDropsEvent
+handling, deferred tool syncing) so even Singularity-tier overdrive no longer
+drags the server tick down.
+
+AE2: SCC recipes are exposed to AE2 as real crafting patterns (with ingredients),
+AE2 patterns show up in SCC's calculator with their actual ingredient tree, and
+item sharing between both networks becomes hands-off.
+'''
+
+[[mixins]]
+config = "sccadd.mixins.json"
+
+[[dependencies.sccadd]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sccadd]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sccadd]]
+modId = "scc"
+type = "required"
+versionRange = "[1.4.0,1.5.0)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.sccadd]]
+modId = "ae2"
+type = "optional"
+versionRange = "[19.0.0,)"
+ordering = "AFTER"
+side = "BOTH"
