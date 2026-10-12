@@ -1,4 +1,5 @@
 {
   "block.sccadd.village_chamber": "Village Chamber",
-  "block.sccadd.interface_compact": "Compact Interface"
+  "block.sccadd.interface_compact": "Compact Interface",
+  "sccadd.tab": "SCC Additions"
 }

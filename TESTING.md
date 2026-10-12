@@ -7,6 +7,7 @@ O jar já está em `mods/sccadd-1.0.0.jar`.
 
 - [ ] Cliente chega ao menu principal sem crash.
 - [ ] Lista de mods mostra **Super Cool Additions 1.0.0**.
+- [ ] Aba **SCC Additions** no inventário criativo, logo depois da aba do SCC: ícone da Calculadora de Quebra, itens do addon (Interface Compacta, e a Câmara de Vila com Easy Villagers) e as máquinas do SCC que o addon mexe.
 - [ ] `config/sccadd-common.toml` foi criado (seção `[breaking]` e `[ae2]`).
 
 ## 2. Performance — Calculadora de Quebra

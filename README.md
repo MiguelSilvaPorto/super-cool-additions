@@ -8,6 +8,7 @@ O que o addon traz:
 2. **Integração profunda com o AE2** — receitas, itens e fluidos nos dois sentidos, Inscriber/Charger e prensas reaproveitáveis.
 3. **Requester** — campos digitados, cadeias de produção e o botão Pensar.
 4. **Terminal e ferramentas** — filtro avançado, editor de barra, terminal de bolso com regras por slot, ímã, tanques de fluido no Interface e máquina escolhida na Processing Calculator.
+5. **Aba criativa própria** — a aba **SCC Additions** no inventário criativo, logo depois da aba do SCC, com os itens do addon e as máquinas do SCC que ele melhora.
 
 - Minecraft **1.21.1** / NeoForge **21.1.251**
 - Requer **SCC 1.4.0** (`scc-1.4.0.jar`)
