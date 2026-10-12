@@ -27,14 +27,14 @@ public abstract class AnalysisFingerprintMixin {
     @Inject(method = "hardPrint", at = @At("RETURN"), cancellable = true, require = 0)
     private static void sccadd$resilientHardPrint(CallbackInfoReturnable<String> cir) {
         if (SccAddConfig.resilientAnalysisCache()) {
-            cir.setReturnValue("sccadd2-" + FingerprintExtra.recipeShape());
+            cir.setReturnValue("sccadd1");
         }
     }
 
     @Inject(method = "softPrint", at = @At("RETURN"), cancellable = true, require = 0)
     private static void sccadd$extendedSoftPrint(CallbackInfoReturnable<String> cir) {
         if (SccAddConfig.resilientAnalysisCache()) {
-            cir.setReturnValue(cir.getReturnValue() + "-" + FingerprintExtra.signature());
+            cir.setReturnValue(cir.getReturnValue() + "-" + FingerprintExtra.signature() + "-" + FingerprintExtra.recipeShape());
         }
     }
 }
