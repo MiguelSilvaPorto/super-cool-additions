@@ -1,5 +1,6 @@
 package com.sccadd;
 
+import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
@@ -9,6 +10,8 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class SccAddConfig {
     public static final ModConfigSpec SPEC;
 
+    public static final ModConfigSpec.BooleanValue REUSE_CATALYSTS;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> REUSABLE_CATALYSTS;
     public static final ModConfigSpec.DoubleValue BREAKING_BUDGET_MS;
     public static final ModConfigSpec.DoubleValue BREAKING_TOTAL_BUDGET_MS;
     public static final ModConfigSpec.BooleanValue BREAKING_FIRE_DROPS_EVENT;
@@ -193,6 +196,22 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment("Processing Calculators and the machines they feed.").push("processing");
+
+        REUSE_CATALYSTS = builder
+                .comment("Count the presses (and other reusable catalysts) inside a calculator's machine as network stock,",
+                        "and take a wrong press back out before a recipe that needs another one.",
+                        "Without this, SCC orders a new press although the machine already holds one.")
+                .define("reuseCatalysts", true);
+
+        REUSABLE_CATALYSTS = builder
+                .comment("Items a machine keeps and reuses instead of using up.")
+                .defineListAllowEmpty("reusableCatalysts", List.of(
+                        "ae2:logic_processor_press", "ae2:calculation_processor_press",
+                        "ae2:engineering_processor_press", "ae2:silicon_press"), () -> "", o -> o instanceof String);
+
+        builder.pop();
+
         builder.comment("Pocket terminal magnet.").push("magnet");
 
         MAGNET_RANGE = builder
@@ -334,6 +353,14 @@ public final class SccAddConfig {
 
     public static int magnetRange() {
         return MAGNET_RANGE.get();
+    }
+
+    public static boolean reuseCatalysts() {
+        return REUSE_CATALYSTS.get();
+    }
+
+    public static List<? extends String> reusableCatalysts() {
+        return REUSABLE_CATALYSTS.get();
     }
 
     public static boolean cleanVariants() {

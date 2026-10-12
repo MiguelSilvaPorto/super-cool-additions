@@ -26,7 +26,9 @@
     "NetworkViewAdd",
     "InterfaceTemplateGuardMixin",
     "InterfaceTanksMixin",
-    "ProcessorForcedMachineMixin"
+    "ProcessorForcedMachineMixin",
+    "ProcessorCatalystScannerMixin",
+    "CraftJobCatalystSwapMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
