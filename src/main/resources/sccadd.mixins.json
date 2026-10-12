@@ -24,7 +24,9 @@
     "client.CustomRecipeBookMixin",
     "client.Ae2TerminalScreenMixin",
     "client.Ae2OfferPatternsMixin",
-    "client.AnalysisFingerprintMixin"
+    "client.AnalysisFingerprintMixin",
+    "RequesterPlannerInvoker",
+    "CraftSimInvoker"
   ],
   "server": [],
   "injectors": {

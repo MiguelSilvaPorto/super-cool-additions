@@ -27,6 +27,7 @@ public abstract class Ae2OfferPatternsMixin {
     @Inject(method = "compute", at = @At("HEAD"), require = 0)
     private static void sccadd$offerTarget(PlanRequestPayload payload, CallbackInfoReturnable<Object> cir) {
         SccPatternWriter.setTarget(payload.requester());
+        SccPatternWriter.setStock(payload.stock());
     }
 
     @Inject(method = "compute", at = @At("RETURN"), require = 0)
@@ -41,10 +42,11 @@ public abstract class Ae2OfferPatternsMixin {
     )
     private static String sccadd$sendPatternChunks(StringBuilder sb) {
         String base = sb.toString();
-        if (!SccAddConfig.sccPatternsInAe2()) {
+        if (!SccAddConfig.sccPatternsInAe2() && !SccAddConfig.offerRequiresStock()) {
             return base;
         }
         try {
+            base = SccPatternWriter.filterOffer(base);
             BlockPos target = SccPatternWriter.target();
             String patterns = SccPatternWriter.patternsFor(base);
             if (target != null && !patterns.isEmpty()) {

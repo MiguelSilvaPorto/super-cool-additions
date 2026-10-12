@@ -1,6 +1,7 @@
 package com.sccadd.ae2;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -14,9 +15,14 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
+import net.neoforged.neoforge.fluids.FluidStack;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -45,9 +51,8 @@ public final class SccAe2Patterns {
         if (outputKey == null) {
             return null;
         }
-        IPatternDetails.IInput[] inputs = new IPatternDetails.IInput[recipe.inputs().size()];
-        for (int index = 0; index < inputs.length; index++) {
-            SccAe2Recipe.Input input = recipe.inputs().get(index);
+        List<IPatternDetails.IInput> inputs = new ArrayList<>(recipe.inputs().size() + recipe.fluids().size());
+        for (SccAe2Recipe.Input input : recipe.inputs()) {
             GenericStack[] options = new GenericStack[input.options().size()];
             int used = 0;
             for (StackKey option : input.options()) {
@@ -62,9 +67,28 @@ public final class SccAe2Patterns {
             if (used < options.length) {
                 options = Arrays.copyOf(options, used);
             }
-            inputs[index] = new SimpleInput(options, 1L);
+            inputs.add(new SimpleInput(options, 1L));
         }
-        return new SimplePattern(outputKey, inputs, List.of(new GenericStack(outputKey, recipe.outputCount())));
+        for (SccAe2Recipe.FluidInput fluid : recipe.fluids()) {
+            ResourceLocation id = ResourceLocation.tryParse(fluid.fluidId());
+            if (id == null || !BuiltInRegistries.FLUID.containsKey(id)) {
+                return null;
+            }
+            Fluid found = BuiltInRegistries.FLUID.get(id);
+            if (found == null || found == Fluids.EMPTY) {
+                return null;
+            }
+            AEFluidKey key = AEFluidKey.of(found);
+            if (key == null) {
+                return null;
+            }
+            inputs.add(new SimpleInput(new GenericStack[]{new GenericStack(key, fluid.amount())}, 1L));
+        }
+        if (inputs.isEmpty()) {
+            return null;
+        }
+        return new SimplePattern(outputKey, inputs.toArray(new IPatternDetails.IInput[0]),
+                List.of(new GenericStack(outputKey, recipe.outputCount())));
     }
 
     /**
@@ -97,27 +121,38 @@ public final class SccAe2Patterns {
             return false;
         }
 
-        // Only take the ingredients when everything fits.
+        // Only take the ingredients when everything fits (items and fluids).
         for (KeyCounter counter : inputs) {
             for (Object2LongMap.Entry<AEKey> entry : counter) {
-                if (!(entry.getKey() instanceof AEItemKey item)) {
-                    return false;
-                }
-                ItemStack stack = item.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
-                if (!view.insert(stack, true).isEmpty()) {
+                if (entry.getKey() instanceof AEItemKey item) {
+                    ItemStack stack = item.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
+                    if (!view.insert(stack, true).isEmpty()) {
+                        return false;
+                    }
+                } else if (entry.getKey() instanceof AEFluidKey fluid) {
+                    FluidStack stack = fluid.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
+                    if (!view.insertFluid(stack, true).isEmpty()) {
+                        return false;
+                    }
+                } else {
                     return false;
                 }
             }
         }
         for (KeyCounter counter : inputs) {
             for (Object2LongMap.Entry<AEKey> entry : counter) {
-                if (!(entry.getKey() instanceof AEItemKey item)) {
-                    continue;
-                }
-                ItemStack stack = item.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
-                ItemStack rest = view.insert(stack, false);
-                if (!rest.isEmpty()) {
-                    SccLog.warn("sccadd", "AE2 pushed more than the SCC network took: " + rest.getCount() + "x " + rest.getItem());
+                if (entry.getKey() instanceof AEItemKey item) {
+                    ItemStack stack = item.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
+                    ItemStack rest = view.insert(stack, false);
+                    if (!rest.isEmpty()) {
+                        SccLog.warn("sccadd", "AE2 pushed more than the SCC network took: " + rest.getCount() + "x " + rest.getItem());
+                    }
+                } else if (entry.getKey() instanceof AEFluidKey fluid) {
+                    FluidStack stack = fluid.toStack((int) Math.min(Integer.MAX_VALUE, entry.getLongValue()));
+                    FluidStack rest = view.insertFluid(stack, false);
+                    if (!rest.isEmpty()) {
+                        SccLog.warn("sccadd", "AE2 pushed more fluid than the SCC network took: " + rest.getAmount() + "mb " + fluid.getFluid());
+                    }
                 }
             }
         }

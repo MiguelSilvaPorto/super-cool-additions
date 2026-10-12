@@ -21,6 +21,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
     public static final ModConfigSpec.BooleanValue AE2_BRIDGE_ON_RECEIVER;
     public static final ModConfigSpec.BooleanValue AE2_FLUIDS;
+    public static final ModConfigSpec.BooleanValue AE2_OFFER_REQUIRES_STOCK;
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
@@ -102,6 +103,13 @@ public final class SccAddConfig {
                         "mounts the SCC fluids.")
                 .define("fluids", true);
 
+        AE2_OFFER_REQUIRES_STOCK = builder
+                .comment("Only offer AE2 what SCC can really build with the network's current stock.",
+                        "Uses the exact same reachability filter as the SCC terminal, so AE2 never",
+                        "lists items that cannot be built right now. Turn off to offer everything",
+                        "SCC could build if AE2 supplied the ingredients (hybrid mode).")
+                .define("offerRequiresStock", true);
+
         builder.pop();
 
         builder.comment(
@@ -181,6 +189,10 @@ public final class SccAddConfig {
 
     public static boolean ae2Fluids() {
         return AE2_FLUIDS.get();
+    }
+
+    public static boolean offerRequiresStock() {
+        return AE2_OFFER_REQUIRES_STOCK.get();
     }
 
     public static boolean smartPlanner() {

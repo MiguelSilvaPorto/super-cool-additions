@@ -1,11 +1,16 @@
 package com.sccadd.ae2.client;
 
 import de.scc.calculator.calc.AnalysisManager;
+import de.scc.calculator.calc.ItemGraph;
 import de.scc.calculator.calc.RecipeBook;
 import de.scc.calculator.calc.SccRecipe;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.client.screen.CraftSim;
 import de.scc.calculator.network.CraftStep;
+import com.sccadd.SccAddConfig;
+import com.sccadd.mixin.CraftSimInvoker;
+import com.sccadd.mixin.RequesterPlannerInvoker;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -21,6 +26,9 @@ public final class SccPatternWriter {
     /** Target of the running offer computation (the bridge block that asked). */
     private static final ThreadLocal<BlockPos> TARGET = new ThreadLocal<>();
 
+    /** Stock text of the running offer computation. */
+    private static final ThreadLocal<String> STOCK = new ThreadLocal<>();
+
     private SccPatternWriter() {
     }
 
@@ -28,12 +36,63 @@ public final class SccPatternWriter {
         TARGET.set(pos);
     }
 
+    public static void setStock(String stock) {
+        STOCK.set(stock);
+    }
+
     public static void clearTarget() {
         TARGET.remove();
+        STOCK.remove();
     }
 
     public static BlockPos target() {
         return TARGET.get();
+    }
+
+    /**
+     * Keeps only the items SCC can really make with the network's current stock,
+     * using the exact same reachability filter as the SCC terminal (via
+     * {@link CraftSimInvoker}). Everything else is dropped from the offer, so AE2
+     * never lists items that cannot be built right now.
+     */
+    public static String filterOffer(String offerText) {
+        if (!SccAddConfig.offerRequiresStock() || offerText == null || offerText.isEmpty()) {
+            return offerText;
+        }
+        RecipeBook book = AnalysisManager.get().book();
+        ItemGraph graph = AnalysisManager.get().graph();
+        String stockText = STOCK.get();
+        if (book == null || graph == null || stockText == null || stockText.isBlank()) {
+            return offerText;
+        }
+        Map<StackKey, Long> stock;
+        try {
+            stock = RequesterPlannerInvoker.sccadd$parseStock(stockText);
+        } catch (Throwable failed) {
+            return offerText;
+        }
+        if (stock == null) {
+            return offerText;
+        }
+        StringBuilder out = new StringBuilder(offerText.length());
+        for (String line : offerText.split("\n")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            StackKey key = StackKey.decode(line.trim());
+            if (key == null) {
+                out.append(line).append('\n');
+                continue;
+            }
+            try {
+                if (CraftSimInvoker.sccadd$reach(key, book, graph, stock) <= 5) {
+                    out.append(line).append('\n');
+                }
+            } catch (Throwable failed) {
+                out.append(line).append('\n');
+            }
+        }
+        return out.toString();
     }
 
     /** The recipe lines ({@code P\t...}) for every item in the offer text. */
@@ -68,10 +127,13 @@ public final class SccPatternWriter {
             if (recipe == null || CraftStep.isExternal(recipe.typeId())) {
                 continue;
             }
-            if (!recipe.fluids().isEmpty() || recipe.chancy()) {
+            if (recipe.chancy()) {
                 continue;
             }
-            if (recipe.inputs().isEmpty() || recipe.inputs().size() > MAX_INPUTS) {
+            if (recipe.inputs().isEmpty() && recipe.fluids().isEmpty()) {
+                continue;
+            }
+            if (recipe.inputs().size() > MAX_INPUTS) {
                 continue;
             }
             try {
@@ -106,6 +168,16 @@ public final class SccPatternWriter {
                     break;
                 }
             }
+        }
+        for (SccRecipe.Fluid fluid : recipe.fluids()) {
+            if (fluid.optional() || fluid.amount() <= 0 || fluid.id() == null || fluid.id().isBlank()) {
+                continue;
+            }
+            if (!first) {
+                sb.append(';');
+            }
+            first = false;
+            sb.append('F').append(Math.max(1, fluid.amount())).append(':').append(fluid.id());
         }
         return first ? null : sb.append('\n').toString();
     }
