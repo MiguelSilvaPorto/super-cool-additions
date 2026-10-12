@@ -29,6 +29,8 @@ public final class ChainData {
         public int batch = 0;
         /** {@code CraftStep.encode()} of the chosen recipe for one craft. */
         public String step = "";
+        /** How much of the item the network holds right now; written by the server, shown in the editor. */
+        public long have;
         /** Per ingredient of the recipe: the items it may be made of (tags), {@code StackKey.encode()} joined by '|'. */
         public List<String> alts = new ArrayList<>();
 
@@ -41,6 +43,7 @@ public final class ChainData {
             tag.putLong("target", this.target);
             tag.putInt("batch", this.batch);
             tag.putString("step", this.step);
+            tag.putLong("have", this.have);
             ListTag alt = new ListTag();
             for (String options : this.alts) {
                 alt.add(net.minecraft.nbt.StringTag.valueOf(options));
@@ -58,6 +61,7 @@ public final class ChainData {
             node.target = Math.max(0L, tag.getLong("target"));
             node.batch = Math.max(0, tag.getInt("batch"));
             node.step = tag.getString("step");
+            node.have = Math.max(0L, tag.getLong("have"));
             ListTag alt = tag.getList("alts", Tag.TAG_STRING);
             for (int i = 0; i < Math.min(32, alt.size()); i++) {
                 node.alts.add(alt.getString(i));
@@ -67,11 +71,18 @@ public final class ChainData {
     }
 
     public final List<Node> nodes = new ArrayList<>();
+    /** The box the chain starts at (and whose item the requester row shows); 0 = the first box made. */
+    public int startId;
     /** Pairs {from id, to id}. */
     public final List<int[]> links = new ArrayList<>();
 
     public boolean isEmpty() {
         return this.nodes.isEmpty();
+    }
+
+    public Node start() {
+        Node chosen = this.byId(this.startId);
+        return chosen != null ? chosen : (this.nodes.isEmpty() ? null : this.nodes.get(0));
     }
 
     public Node byId(int id) {
@@ -90,7 +101,13 @@ public final class ChainData {
     public List<Node> flow() {
         List<Node> out = new ArrayList<>();
         Set<Integer> seen = new HashSet<>();
-        for (Node start : this.nodes) {
+        List<Node> starts = new ArrayList<>();
+        Node chosen = this.start();
+        if (chosen != null) {
+            starts.add(chosen);
+        }
+        starts.addAll(this.nodes);
+        for (Node start : starts) {
             Node at = start;
             while (at != null && seen.add(at.id)) {
                 out.add(at);
@@ -114,6 +131,7 @@ public final class ChainData {
             list.add(node.save());
         }
         tag.put("nodes", list);
+        tag.putInt("start", this.startId);
         List<Integer> flat = new ArrayList<>();
         for (int[] link : this.links) {
             flat.add(link[0]);
@@ -125,6 +143,7 @@ public final class ChainData {
 
     public static ChainData load(CompoundTag tag) {
         ChainData data = new ChainData();
+        data.startId = tag.getInt("start");
         ListTag list = tag.getList("nodes", Tag.TAG_COMPOUND);
         for (int i = 0; i < Math.min(MAX_NODES, list.size()); i++) {
             data.nodes.add(Node.load(list.getCompound(i)));

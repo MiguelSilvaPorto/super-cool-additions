@@ -155,15 +155,17 @@ public abstract class RequesterBlockEntityMixin implements ChainHolder {
             return;
         }
         this.sccadd$chains[row] = chain == null || chain.isEmpty() ? null : chain;
-        this.sccadd$runners[row] = new ChainRunner();
+        this.sccadd$runners[row].reset();
         if (this.sccadd$chains[row] != null) {
-            // the first box is the start and the goal of the chain: the row shows its item
-            for (ChainData.Node node : this.sccadd$chains[row].flow()) {
-                StackKey key = node.item.isEmpty() ? null : StackKey.decode(node.item);
-                if (key != null) {
-                    this.rows[row].item = key;
-                }
-                break;
+            // the start box is the beginning and the goal of the chain: the row shows its item
+            ChainData.Node start = this.sccadd$chains[row].start();
+            StackKey key = start == null || start.item.isEmpty() ? null : StackKey.decode(start.item);
+            if (key != null) {
+                this.rows[row].item = key;
+            }
+            NetworkView now = ((RequesterBlockEntity) (Object) this).network();
+            if (now != null) {
+                ChainRunner.countStock(this.sccadd$chains[row], now);
             }
         }
         ((RequesterBlockEntity) (Object) this).setChanged();
@@ -211,7 +213,11 @@ public abstract class RequesterBlockEntityMixin implements ChainHolder {
         for (int i = 0; i < 6; i++) {
             ChainData chain = this.sccadd$chains[i];
             RequesterBlockEntity.Row row = this.rows[i];
-            if (chain == null || !row.enabled) {
+            if (chain == null) {
+                continue;
+            }
+            changed |= ChainRunner.countStock(chain, view);
+            if (!row.enabled) {
                 continue;
             }
             if (terminal == null) {

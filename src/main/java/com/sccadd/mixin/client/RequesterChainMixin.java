@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Clicking a requester's empty-cursor item slot now offers two buttons side by side: pick a single
  * item (SCC's own picker) or draw a production chain for the row.
  */
-@Mixin(value = RequesterScreen.class, remap = false)
+@Mixin(value = RequesterScreen.class, remap = false, priority = 1500)
 public abstract class RequesterChainMixin {
     private static final int BTN_W = 44;
     private static final int BTN_H = 14;
@@ -106,6 +106,12 @@ public abstract class RequesterChainMixin {
                     int x = this.sccadd$left() + 8;
                     int y = this.sccadd$top() + 20 + i * 16 - 1;
                     g.renderOutline(x, y, 18, 17, 0xFF4FD1BE);
+                    // the row's own fields do not apply to a chain: say what drives it instead
+                    int panel = de.scc.calculator.client.screen.SccGui.PANEL | 0xFF000000;
+                    g.fill(this.sccadd$left() + 90, y, this.sccadd$left() + 228, y + 16, panel);
+                    long met = chain.nodes.stream().filter(n -> n.have >= n.target).count();
+                    g.drawString(Minecraft.getInstance().font, "Chain: " + chain.nodes.size() + " boxes, " + met + " at target",
+                            this.sccadd$left() + 94, y + 4, 0xFF4FD1BE, false);
                 }
             }
         }

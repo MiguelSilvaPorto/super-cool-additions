@@ -23,6 +23,26 @@ public final class ChainRunner {
     private int cursor = -1;
     private long retryAt;
 
+    /** Forget which box ran last (the chain was edited); a job already running is kept and waited for. */
+    public void reset() {
+        this.cursor = -1;
+        this.retryAt = 0L;
+    }
+
+    /** Writes the stock of every box into the chain so the editor can show it; true if any number changed. */
+    public static boolean countStock(ChainData chain, NetworkView view) {
+        boolean changed = false;
+        for (ChainData.Node node : chain.nodes) {
+            StackKey key = node.item.isEmpty() ? null : StackKey.decode(node.item);
+            long have = key == null ? 0L : Math.max(0L, view.count(key));
+            if (have != node.have) {
+                node.have = have;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     public void tick(RequesterBlockEntity.Row row, ChainData chain, NetworkView view, TerminalBlockEntity terminal, long gameTime, String label) {
         if (this.job != null) {
             if (!this.job.isFinished()) {

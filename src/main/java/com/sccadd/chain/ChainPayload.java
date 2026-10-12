@@ -36,7 +36,11 @@ public record ChainPayload(BlockPos pos, int row, CompoundTag chain) implements 
                     || payload.row() < 0 || payload.row() >= RequesterBlockEntity.ROWS) {
                 return;
             }
-            ((ChainHolder) be).sccadd$setChain(payload.row(), ChainData.load(payload.chain()));
+            ChainData data = ChainData.load(payload.chain());
+            for (ChainData.Node node : data.nodes) {
+                node.have = 0L;
+            }
+            ((ChainHolder) be).sccadd$setChain(payload.row(), data);
         });
     }
 }
