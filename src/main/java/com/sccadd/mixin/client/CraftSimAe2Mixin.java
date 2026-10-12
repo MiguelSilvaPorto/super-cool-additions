@@ -48,18 +48,44 @@ public abstract class CraftSimAe2Mixin {
     @Inject(method = "candidatesFor", at = @At("RETURN"), cancellable = true, require = 0)
     private static void sccadd$keepAe2AsLastResort(StackKey item, long amount, CraftingPlan plan, RecipeBook book,
             ItemGraph graph, Map<StackKey, Long> stock, int depth, int[] budget, CallbackInfoReturnable<List<SccRecipe>> cir) {
+        List<SccRecipe> list = cir.getReturnValue();
+        if (list == null) {
+            return;
+        }
+        // A press-copy recipe (iron block + press -> the same press) only works when a press is already
+        // there: it is a catalyst that comes back, not a way to make one from iron.
+        if (stock != null && stock.getOrDefault(item, 0L) <= 0L) {
+            List<SccRecipe> usable = new ArrayList<>(list.size());
+            for (SccRecipe recipe : list) {
+                if (!copiesItsOwnCatalyst(recipe)) {
+                    usable.add(recipe);
+                }
+            }
+            if (usable.size() != list.size()) {
+                list = List.copyOf(usable);
+                cir.setReturnValue(list);
+            }
+        }
         if (!Ae2PatternBook.has(item) || !Ae2Book.canCraft(item)) {
             return;
         }
         SccRecipe opaque = Ae2Book.recipeFor(item);
-        List<SccRecipe> list = cir.getReturnValue();
-        if (opaque == null || list == null || list.contains(opaque)) {
+        if (opaque == null || list.contains(opaque)) {
             return;
         }
         List<SccRecipe> more = new ArrayList<>(list.size() + 1);
         more.addAll(list);
         more.add(opaque);
         cir.setReturnValue(List.copyOf(more));
+    }
+
+    private static boolean copiesItsOwnCatalyst(SccRecipe recipe) {
+        for (SccRecipe.Input input : recipe.inputs()) {
+            if (!input.consumed() && input.options().contains(recipe.output())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
