@@ -30,12 +30,15 @@
     "ProcessorCatalystScannerMixin",
     "CraftJobCatalystSwapMixin",
     "ProcessorKeepCatalystMixin",
-    "ProcessorReleaseCatalystMixin"
+    "ProcessorReleaseCatalystMixin",
+    "ItemFilterMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
     "client.Ae2MachineRecipesMixin",
     "client.InterfaceScreenFluidMixin",
+    "client.StorageConnectorScreenPagesMixin",
+    "client.StorageConnectorScreenAccess",
     "client.RequesterChainMixin",
     "client.ProcessorConfigMachineMixin",
     "client.CustomRecipeBookMixin",
