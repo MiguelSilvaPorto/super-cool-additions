@@ -1,158 +1,79 @@
 # Pendências — Super Cool Additions (sccadd)
 
-Backlog do que ainda precisa ser feito ou investigado. Atualizar conforme os
-testes avançam.
+Estado em 12/10/2026. 101 arquivos, 16 opções de config, ~36 commits.
 
-## 1. Análise de receitas do SCC — DIAGNÓSTICO (dados reais do ATM10)
+## ✅ Entregue e validado em jogo
 
-**Caso:** ATM10, 492 mods, 278.889 receitas, 156.928 itens, 128.419 mappings.
-Análise medida: **713 s (12 min)** numa sessão e **462 s (7,7 min)** na outra.
-`analysis.dat` = **21,4 MB**, salvo em ~8-10 s em background.
+1. **Performance da Calculadora de Quebra**
+   - Orçamento por tick (por máquina e global), loot params cacheados, sync adiado,
+     `BlockDropsEvent` direto/opcional, marcas no `/scc profile`.
+   - **Modo lote** com "tabelas de dados" (amostras reais → sorteios), cache de loot
+     determinístico, buffer escondido por tier, ímã.
+   - Medido: 15.001 blocos/10s com apenas 1.326 quebras reais (~11x menos).
 
-**Causa raiz do "cache morre a cada fechamento":** o *hard fingerprint* do SCC
-(`AnalysisManager.hardPrint()`) inclui:
-- **versões de TODOS os mods** (`modId@version`) — qualquer atualização de pack invalida;
-- **quase todos os campos do `SccConfig`** que não estão na lista `FINGERPRINT_IGNORED`
-  — inclusive `blockedItems`, `ignoredComponents`, `terminalBar`, `terminalRecentRow`,
-  `design`, `font`, `largeText`, etc. O `scc-client.json` do ATM10 foi editado às
-  18:47 (o usuário estava mexendo justamente em `ignoredComponents`/`blockedItems`
-  para domar variantes) → **cada ajuste descarta o cache** e refaz 8-12 min.
+2. **Integração AE2 (dois sentidos)**
+   - Padrões AE2 com ingredientes no calculador SCC; receitas do SCC como padrões
+     reais no AE2 (com confirmação no plano); transferência em chunks (sem teto).
+   - **Receptor como ponte**: monta o estoque SCC no ME e **lê o ME para o SCC**
+     (conector virtual injetado no scan).
+   - **Fluidos nos dois sentidos** (receitas com fluido inclusas).
+   - Filtro de oferta pelo estoque real (reusa `CraftSim.reach` do SCC) e pelo botão
+     "Only with ingredients" do próprio SCC.
+   - Planejador inteligente (2+ jogadores), watchdog da `BridgeGuard`.
 
-Quando o hard fingerprint muda, o SCC **nem tenta usar o cache**. Já quando só o
-*soft* muda (ids de receita/goo), ele usa o cache velho e re-analisa em background
-("cache matches roughly") — exatamente o comportamento desejado.
+3. **Cache de análise resiliente** — versões de mods/configs viram "soft" (usa o
+   cache na hora + refresh em background). Validado no ATM10 (cache em 904 ms).
 
-**Correção proposta (rápida, alto impacto):**
-- [x] **IMPLEMENTADO** — mixin `AnalysisFingerprintMixin` + `FingerprintExtra`:
-      hard print vira constante (formato segue protegido pelo cabeçalho `#SCC62`);
-      soft print passa a incluir versões de mods + configs que afetam a análise.
-      Config: `[analysis] resilientCache` (padrão true).
-- [ ] **Testar no ATM10**: 1ª abertura faz a última análise completa; da 2ª em
-      diante o log deve mostrar `analysis loaded from cache`. Depois, update de
-      pack/config deve usar o cache na hora + refresh em background.
+4. **UI / terminal**
+   - Filtro de variantes ("Clean variants") + **Filtro Avançado** (estoque, traços,
+     mod, nome; `config/sccadd-filter.json`).
+   - Editor de barra por arrastar; "ghost veil" para fabricáveis sem estoque.
+   - Pocket terminal + regras por slot (exportar/importar, fluidos, craft more).
+   - Interface: tanques/templates de fluido; templates recusam inserções de fora.
 
-**Pedidos do usuário (features maiores):**
-- [ ] **Análise incremental/priorizada por busca**: mostrar receitas já analisadas
-      enquanto o resto roda em segundo plano; ao pesquisar "planks", priorizar tudo
-      relacionado e exibir assim que ficar pronto. (Hoje: nada é utilizável antes
-      de a análise terminar; `AnalysisManager` só vira READY no fim.)
-- [ ] **Análise/cache no servidor**: um cliente analisa e envia o `analysis.dat`
-      ao servidor; quem entra depois baixa e carrega na hora, sem depender do
-      processamento do próprio PC.
+5. **Requester / autocrafting**
+   - **Cadeias de produção** (caixas arrastáveis, receita própria, setas, round-robin
+     no servidor, edição durante o job, sem limite de caixas).
+   - **Think**: planejamento em background para pedidos grandes.
+   - Campos tipados (stock/pedido/tempo/passo) e dígitos no diálogo de pedido.
 
-## 2. Variantes na busca (pedido do usuário)
+6. **Extras**: Calculadora de Processamento pode **forçar qual máquina ela é**
+   (clique direito no ícone) — automação externa com baú na frente.
 
-**Hoje:** buscar "espada de diamante" lista todas as variações (encantamentos,
-atributos, nome, etc.). O usuário já tentou resolver via config
-(`ignoredComponents` com damage/custom_name/lore/rarity... e `blockedItems` com
-`justdirethings:*_sword~*`) — mas `stored_enchantments` continua como componente
-de variante e a lista polui.
+## ⏳ Falta fazer
 
-**Pedido:**
-- [ ] Padrão: mostrar só o item **vanilla/limpo** (sem atributos, encantamentos, nome...).
-- [ ] **Botão novo "filtro"** no terminal para escolher o que mostrar (tudo ↔ limpo
-      ↔ configurável).
+### Alto valor (escopo original)
+- [ ] **Análise de receitas incremental + prioridade por busca** — mostrar receitas
+      já analisadas enquanto o resto roda, priorizar o que a busca pede.
+      (Maior mudança; mexe no motor do SCC.)
+- [ ] **Cache de análise no servidor** — cliente envia o `analysis.dat`; quem entra
+      depois baixa e carrega instantâneo.
+- [ ] **Medição final da performance** com `/scc profile on` (antes/depois do lote)
+      + stress do buffer cheio (drops que não cabem).
 
-## 3. Fluxo de itens SCC ↔ AE2 — "Interface + Storage Bus" (pedido do usuário)
+### Acabamento de release
+- [ ] `debugOffer` está **ligado por padrão** (logs a cada 5-10s) → virar `false`.
+- [ ] Subir a versão (0.1.0 → 1.0.0) + tag/release no GitHub + atualizar a descrição
+      do `neoforge.mods.toml` (hoje só fala do fix e do AE2).
+- [ ] **README/TESTING/NOTAS desatualizados** — não citam chains, pocket, filtro
+      avançado, machine force, modo lote etc.
+- [ ] Decidir visibilidade do repositório (privado hoje).
+- [ ] (Opcional) teste de fumaça automático no CI (subir servidor + mixins).
 
-**Pedido:** melhorar o fluxo de itens para funcionar "quase igual ao Interface +
-Storage Bus do AE2":
-- AE2, **via Storage Bus encostado num bloco do SCC**, vê **todos** os itens da
-  rede SCC — ida e volta (extrair e inserir).
-- O inverso (SCC via Storage Connector em bloco AE2) já funciona bem — manter.
+### Bugs/riscos conhecidos
+- [ ] **Jade**: `Missing config translation: config.jade.plugin_scc.*` aparece em
+      todo log (é do SCC com o Jade; mitigação limitada no addon).
+- [ ] **Dupla oferta AE2** se Antena **e** Receptor estiverem no mesmo grid — os dois
+      provedores oferecem; documentar "use um" ou deduplicar.
+- [ ] Revisitar defaults do orçamento do breaking (`budgetMs` 2 / `totalBudgetMs` 6)
+      agora que o lote é barato (talvez 1 / 4).
+- [ ] Documentar o trade-off do modo lote (aproximação estatística auto-corrigida).
 
-**DECISÃO NOVA (usuário): a ANTENA SAI do fluxo.** Motivo: em servidor grande com
-duas redes SCC, a antena (que registra um nó AE2 genérico no grid) faz o AE2
-"quebrar junto com o SCC". Em vez dela, usar **somente o par Transmissor + Receptor**:
-o transmissor fica na rede SCC, o receptor vai para o lado do AE2 — assim cada par
-escolhe exatamente qual rede SCC conversa com qual rede AE2.
-
-**O que a ponte AE2 faz hoje (tudo na antena):**
-- `Ae2Bridge.Node` (por antena): `IStorageProvider` (monta a rede SCC no ME),
-  `IAEPowerStorage` (ponte AE2↔FE) e `ICraftingProvider` (oferta + padrões).
-- `Ae2AntennaBlockEntity extends NetworkAntennaBlockEntity` + capability
-  `IN_WORLD_GRID_NODE_HOST` registrada só no `NETWORK_ANTENNA_BE`.
-- A resposta da oferta (`RequesterPlanPayload`, rows -8/-9) só é roteada para
-  `NetworkAntennaBlockEntity`.
-
-**Plano de implementação (receptor como ponte, sem antena):**
-- [ ] Registrar `AECapabilities.IN_WORLD_GRID_NODE_HOST` no `WIRELESS_RECEIVER_BE`
-      (nó próprio do addon, um por receptor).
-- [ ] Serviços do nó:
-      - `IStorageProvider` montando um `MEStorage` sobre o `NetworkView` do receptor
-        (itens; fluidos depois — ver seção 4);
-      - `ICraftingProvider` reutilizando `SccAe2PatternStore`/`SccAe2Patterns` (padrões);
-      - oferta: `FuelOrders.request(..., -9)` + mixin no `RequesterPlanPayload` para
-        rotear a resposta -9 também para receptores;
-      - entrega: poller próprio (quando `crafting.isRequesting(key)`, extrai da rede
-        SCC e insere no ME) — mesmo fluxo da antena;
-      - `IAEPowerStorage`: decidir se a ponte de energia também vai pro receptor.
-- [ ] Config: modo da ponte AE2 (`receiver` / `antenna` / `both`) para o usuário
-      escolher quem fica no fluxo.
-- [ ] Garantir que dois pares (duas redes SCC × dois AE2) não se misturem.
-
-**FLUXO DESEJADO (usuário, confirmar):**
-1. AE2 pede um item ("faça isso").
-2. SCC calcula o plano e **o que vai consumir**.
-3. O plano é apresentado no **preview de fabricação do AE2** (padrões com
-   ingredientes já expostos pelo addon) para o jogador **aprovar**.
-4. Aprovado → o AE2 empurra os ingredientes → **job SCC roda**.
-5. Resultado volta para o ME pela ponte.
-→ É o comportamento natural do AE2 com padrões reais; a ponte do receptor deve
-   entregar exatamente isso (sem o fluxo indireto de "perguntar pro cliente").
-
-**Investigação já feita (AE2 19.2.18):**
-- Existe `appeng.api.AECapabilities.ME_STORAGE` (`BlockCapability<MEStorage, Direction>`)
-  — é o que o Storage Bus consulta no bloco alvo.
-- Caminho: registrar `ME_STORAGE` (e/ou `Capabilities.ItemHandler.BLOCK`) nos blocos
-  do SCC com um `MEStorage`/`IItemHandler` virtual em cima do `NetworkView`.
-- Reaproveitar o padrão do próprio SCC (`Ae2MeStore`, `Ae2Bridge.Storage`) incluindo
-  a guarda anti-recursão (`BridgeGuard`).
-
-## 4. Líquidos entre AE2 e SCC (pedido do usuário — novo)
-
-**Problema:** o AE2 tem líquidos na rede (ex.: água, image do terminal), e o SCC,
-mesmo tendo armazenamento e uso de fluidos, **não reconhece os líquidos do AE2**
-(nem o contrário).
-
-**Diagnóstico (confirmado no código):**
-- SCC tem suporte completo a fluidos: `NetworkView.fluidContents()`, `drainFluid`,
-  `insertFluid`, blocos de Fluid Storage no `SccRegistry`.
-- Mas a ponte AE2 do SCC só trata **itens**: `Ae2MeStore` e `Ae2Bridge.Storage`
-  checam apenas `AEItemKey` — **nenhum `AEFluidKey`** no pacote `compat/ae2`.
-- O AE2 19.2.18 tem fluidos como cidadãos de primeira classe (`AEFluidKey`).
-
-**Correção proposta (dois sentidos):**
-- [ ] **AE2 → SCC**: o Conector de Armazenamento num bloco AE2 também deve expor os
-      fluidos do ME para a rede SCC (hoje só itens).
-- [ ] **SCC → AE2**: a Antena deve montar os fluidos do SCC no grid (hoje
-      `Ae2Bridge.Storage.listStock` lista só itens).
-- [ ] Verificar o mesmo para produtos químicos (Mekanism) se aplicável.
-
-## 5. Bugs de UI (usuário relatou; detalhes pendentes)
-
-
-- [ ] Jade: `Missing config translation: config.jade.plugin_scc.*` — as opções do
-      SCC na tela de config do Jade aparecem como chaves cruas.
-      (pré-existente do SCC; dá para mitigar com traduções do addon?)
-- [ ] Aguardando a lista completa do usuário (prints ajudam).
-
-## 6. Problemas com tarefas / autocrafting (usuário relatou; detalhes pendentes)
-
-- [ ] Aguardando os casos específicos (jobs travados? itens somem? máquina não
-      encontrada?).
-
-## 7. Performance — acompanhamento
-
-- [ ] Usuário medir `/scc profile` com a Calculadora de Quebra Singularidade e
-      mandar as linhas `sccadd breaking work`, `sccadd loot roll`,
-      `sccadd drop event`.
-- [ ] Avaliar depois: `fits` + inserção dupla (simular + real) na saída;
-      cache de plano/tag filters; fairness do orçamento global entre máquinas.
-
-## 8. Integração AE2 — validação em jogo
-
-- [ ] Padrões AE2 com ingredientes no calculador SCC (config `[ae2] patternsInScc`).
-- [ ] Receitas SCC como padrões AE2 reais + push de ingredientes
-      (config `[ae2] sccPatternsInAe2`).
-- [ ] Conferir `logs/scc.log` para mensagens `sccadd` de falha de push.
+### Testes pendentes das features novas
+- [ ] Cadeias (round-robin, edição durante job, ingredientes faltando).
+- [ ] Think (pedido grande, retomar).
+- [ ] Pocket terminal + regras por slot.
+- [ ] Machine force (recém-commitado).
+- [ ] Interface: tanques/templates.
+- [ ] Ímã.
+- [ ] Buffer cheio do breaking (para por falta de espaço).
