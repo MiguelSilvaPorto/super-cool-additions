@@ -30,7 +30,11 @@ public abstract class InterfaceTanksMixin implements TankHolder {
 
     @Inject(method = "serverTick", at = @At("RETURN"), require = 0)
     private static void sccadd$tickTanks(Level level, BlockPos pos, BlockState state, InterfaceBlockEntity be, CallbackInfo ci) {
-        ((TankHolder) be).sccadd$tanks().tick();
+        InterfaceTanks tanks = ((TankHolder) be).sccadd$tanks();
+        tanks.tick();
+        if (be.getLevel() != null && be.getLevel().getGameTime() % 10 == 4 && tanks.takeDirty()) {
+            ((NetworkBlockEntityInvoker) (Object) be).sccadd$sync();
+        }
     }
 
     @Inject(method = "saveAdditional", at = @At("TAIL"), require = 0)

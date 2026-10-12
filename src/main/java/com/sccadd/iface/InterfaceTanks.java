@@ -30,11 +30,16 @@ public final class InterfaceTanks implements IFluidHandler {
     private static final int SLOTS = InterfaceBlockEntity.SLOTS;
 
     private final InterfaceBlockEntity be;
+    /** What each templated cell keeps stocked, ready for a neighbour to take. */
     private final FluidStack[] tanks = new FluidStack[SLOTS];
+    /** What a neighbour has poured in, on its way to the network. Independent of the templates. */
+    private final FluidStack[] inbox = new FluidStack[SLOTS];
+    private boolean dirty;
 
     public InterfaceTanks(InterfaceBlockEntity be) {
         this.be = be;
         java.util.Arrays.fill(this.tanks, FluidStack.EMPTY);
+        java.util.Arrays.fill(this.inbox, FluidStack.EMPTY);
     }
 
     @Nullable
@@ -75,6 +80,18 @@ public final class InterfaceTanks implements IFluidHandler {
         }
         boolean changed = false;
         for (int i = 0; i < SLOTS; i++) {
+            // what was poured in goes to the network, whatever the template says
+            FluidStack poured = this.inbox[i];
+            if (!poured.isEmpty()) {
+                FluidStack left = view.insertFluid(poured.copy(), false);
+                if (left == null) {
+                    left = FluidStack.EMPTY;
+                }
+                if (left.getAmount() != poured.getAmount()) {
+                    this.inbox[i] = left.isEmpty() ? FluidStack.EMPTY : left;
+                    changed = true;
+                }
+            }
             Fluid wanted = this.template(i);
             FluidStack held = this.tanks[i];
             if (!held.isEmpty() && (wanted == null || held.getFluid() != wanted)) {
@@ -85,10 +102,12 @@ public final class InterfaceTanks implements IFluidHandler {
                 if (left.getAmount() != held.getAmount()) {
                     this.tanks[i] = left.isEmpty() ? FluidStack.EMPTY : left;
                     changed = true;
+                    this.dirty = true;
                 }
             }
             if (wanted != null && this.refill(i, wanted, view)) {
                 changed = true;
+                this.dirty = true;
             }
         }
         if (changed) {
@@ -110,6 +129,7 @@ public final class InterfaceTanks implements IFluidHandler {
             return false;
         }
         this.tanks[slot] = new FluidStack(wanted, held.getAmount() + got);
+        this.dirty = true;
         return true;
     }
 
@@ -131,7 +151,10 @@ public final class InterfaceTanks implements IFluidHandler {
 
     @Override
     public FluidStack getFluidInTank(int tank) {
-        return tank >= 0 && tank < SLOTS ? this.tanks[tank] : FluidStack.EMPTY;
+        if (tank < 0 || tank >= SLOTS) {
+            return FluidStack.EMPTY;
+        }
+        return this.template(tank) != null ? this.tanks[tank] : this.inbox[tank];
     }
 
     @Override
@@ -141,8 +164,8 @@ public final class InterfaceTanks implements IFluidHandler {
 
     @Override
     public boolean isFluidValid(int tank, FluidStack stack) {
-        return tank >= 0 && tank < SLOTS && this.template(tank) == null
-                && (this.tanks[tank].isEmpty() || FluidStack.isSameFluidSameComponents(this.tanks[tank], stack));
+        return tank >= 0 && tank < SLOTS
+                && (this.inbox[tank].isEmpty() || FluidStack.isSameFluidSameComponents(this.inbox[tank], stack));
     }
 
     @Override
@@ -152,10 +175,7 @@ public final class InterfaceTanks implements IFluidHandler {
         }
         int best = -1;
         for (int i = 0; i < SLOTS; i++) {
-            if (this.template(i) != null) {
-                continue;
-            }
-            FluidStack held = this.tanks[i];
+            FluidStack held = this.inbox[i];
             if (!held.isEmpty() && FluidStack.isSameFluidSameComponents(held, resource)) {
                 best = i;
                 break;
@@ -167,10 +187,10 @@ public final class InterfaceTanks implements IFluidHandler {
         if (best < 0) {
             return 0;
         }
-        FluidStack held = this.tanks[best];
+        FluidStack held = this.inbox[best];
         int accepted = Math.min(resource.getAmount(), CAPACITY - held.getAmount());
         if (accepted > 0 && action.execute()) {
-            this.tanks[best] = resource.copyWithAmount(held.getAmount() + accepted);
+            this.inbox[best] = resource.copyWithAmount(held.getAmount() + accepted);
             this.be.setChanged();
         }
         return Math.max(accepted, 0);
@@ -219,31 +239,54 @@ public final class InterfaceTanks implements IFluidHandler {
         FluidStack out = held.copyWithAmount(moved);
         if (action.execute()) {
             this.tanks[slot] = moved >= held.getAmount() ? FluidStack.EMPTY : held.copyWithAmount(held.getAmount() - moved);
+            this.dirty = true;
             this.be.setChanged();
         }
         return out;
     }
 
+    /** True once after the stocked amounts changed: the block entity then sends them to clients. */
+    public boolean takeDirty() {
+        boolean was = this.dirty;
+        this.dirty = false;
+        return was;
+    }
+
+    /** How much a templated cell holds right now (for the client's gauge). */
+    public int stocked(int slot) {
+        return slot >= 0 && slot < SLOTS ? this.tanks[slot].getAmount() : 0;
+    }
+
     public void save(CompoundTag tag, HolderLookup.Provider provider) {
+        save(tag, provider, "sccadd_tanks", this.tanks);
+        save(tag, provider, "sccadd_inbox", this.inbox);
+    }
+
+    private static void save(CompoundTag tag, HolderLookup.Provider provider, String key, FluidStack[] stacks) {
         ListTag list = new ListTag();
         boolean any = false;
-        for (FluidStack stack : this.tanks) {
+        for (FluidStack stack : stacks) {
             any |= !stack.isEmpty();
             list.add(stack.isEmpty() ? new CompoundTag() : stack.save(provider));
         }
         if (any) {
-            tag.put("sccadd_tanks", list);
+            tag.put(key, list);
         }
     }
 
     public void load(CompoundTag tag, HolderLookup.Provider provider) {
-        java.util.Arrays.fill(this.tanks, FluidStack.EMPTY);
-        if (!tag.contains("sccadd_tanks", Tag.TAG_LIST)) {
+        load(tag, provider, "sccadd_tanks", this.tanks);
+        load(tag, provider, "sccadd_inbox", this.inbox);
+    }
+
+    private static void load(CompoundTag tag, HolderLookup.Provider provider, String key, FluidStack[] stacks) {
+        java.util.Arrays.fill(stacks, FluidStack.EMPTY);
+        if (!tag.contains(key, Tag.TAG_LIST)) {
             return;
         }
-        ListTag list = tag.getList("sccadd_tanks", Tag.TAG_COMPOUND);
+        ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
         for (int i = 0; i < Math.min(SLOTS, list.size()); i++) {
-            this.tanks[i] = FluidStack.parseOptional(provider, list.getCompound(i));
+            stacks[i] = FluidStack.parseOptional(provider, list.getCompound(i));
         }
     }
 }

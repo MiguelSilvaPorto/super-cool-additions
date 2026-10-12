@@ -2,6 +2,7 @@ package com.sccadd.mixin.client;
 
 import com.sccadd.iface.InterfaceTanks;
 import de.scc.calculator.client.screen.InterfaceScreen;
+import de.scc.calculator.client.screen.ViewerAreas;
 import de.scc.calculator.network.InterfaceBlockEntity;
 import de.scc.calculator.network.InterfaceMenu;
 import net.minecraft.client.Minecraft;
@@ -53,6 +54,34 @@ public abstract class InterfaceScreenFluidMixin {
         cir.setReturnValue(true);
     }
 
+    /** Dragging a fluid out of the recipe viewer onto a template cell sets it, no bucket needed. */
+    @Inject(method = "sccGhostSlots", at = @At("RETURN"), cancellable = true, require = 0)
+    private void sccadd$fluidGhosts(CallbackInfoReturnable<java.util.List<ViewerAreas.GhostSlot>> cir) {
+        java.util.List<ViewerAreas.GhostSlot> base = cir.getReturnValue();
+        if (base == null) {
+            return;
+        }
+        AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
+        int left = ((ContainerScreenAccess) this).sccadd$left();
+        int top = ((ContainerScreenAccess) this).sccadd$top();
+        java.util.List<ViewerAreas.GhostSlot> out = new java.util.ArrayList<>(base.size());
+        for (ViewerAreas.GhostSlot slot : base) {
+            net.minecraft.client.renderer.Rect2i area = slot.area();
+            int cell = Math.floorDiv(area.getX() - (left + InterfaceMenu.SLOT_X) + 2, 18);
+            boolean template = Math.abs(area.getY() - (top + InterfaceMenu.TEMPLATE_Y)) <= 2 && cell >= 0 && cell < InterfaceBlockEntity.SLOTS;
+            if (template && slot.acceptFluid() == null) {
+                out.add(new ViewerAreas.GhostSlot(area, slot.accept(), (FluidStack fluid) -> {
+                    if (!fluid.isEmpty()) {
+                        this.setEntry(cell, InterfaceTanks.entryOf(fluid.getFluid()));
+                    }
+                }));
+            } else {
+                out.add(slot);
+            }
+        }
+        cir.setReturnValue(out);
+    }
+
     @Inject(method = "sccRender", at = @At("TAIL"), require = 0)
     private void sccadd$drawFluids(GuiGraphics gfx, int mx, int my, float pt, CallbackInfo ci) {
         AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
@@ -63,6 +92,10 @@ public abstract class InterfaceScreenFluidMixin {
         int left = ((ContainerScreenAccess) this).sccadd$left();
         int top = ((ContainerScreenAccess) this).sccadd$top();
         int hover = this.templateAt(mx, my);
+        var font = Minecraft.getInstance().font;
+        InterfaceTanks tanks = ((com.sccadd.iface.TankHolder) be).sccadd$tanks();
+        gfx.pose().pushPose();
+        gfx.pose().translate(0, 0, 300);
         for (int i = 0; i < InterfaceBlockEntity.SLOTS; i++) {
             Fluid fluid = InterfaceTanks.templateOf(be.filter().entry(i));
             if (fluid == null) {
@@ -70,19 +103,36 @@ public abstract class InterfaceScreenFluidMixin {
             }
             int x = left + InterfaceMenu.SLOT_X + i * 18;
             int y = top + InterfaceMenu.TEMPLATE_Y;
+            int amount = tanks.stocked(i);
             IClientFluidTypeExtensions ext = IClientFluidTypeExtensions.of(fluid);
-            ResourceLocation still = ext.getStillTexture();
-            TextureAtlasSprite sprite = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(still);
+            TextureAtlasSprite sprite = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(ext.getStillTexture());
             int tint = ext.getTintColor();
-            gfx.blit(x + 1, y + 1, 0, 16, 16, sprite,
-                    (tint >> 16 & 255) / 255f, (tint >> 8 & 255) / 255f, (tint & 255) / 255f, 1f);
+            // a tank, not an item: dark well, the fluid rising in it by how full it is
+            gfx.fill(x + 1, y + 1, x + 17, y + 17, 0xFF0B1116);
+            int fill = amount <= 0 ? 0 : Math.max(1, Math.min(16, amount * 16 / InterfaceTanks.CAPACITY));
+            if (fill > 0) {
+                gfx.enableScissor(x + 1, y + 17 - fill, x + 17, y + 17);
+                gfx.blit(x + 1, y + 1, 0, 16, 16, sprite,
+                        (tint >> 16 & 255) / 255f, (tint >> 8 & 255) / 255f, (tint & 255) / 255f, 1f);
+                gfx.disableScissor();
+            }
+            gfx.renderOutline(x, y, 18, 18, 0xFF4FD1BE);
+            String text = amount >= 1000 ? (amount / 1000) + "B" : amount + "";
+            gfx.pose().pushPose();
+            gfx.pose().translate(x + 17 - font.width(text) * 0.5f, y + 11, 50);
+            gfx.pose().scale(0.5f, 0.5f, 1f);
+            gfx.drawString(font, text, 0, 0, 0xFFFFFFFF, true);
+            gfx.pose().popPose();
             if (hover == i) {
-                gfx.renderComponentTooltip(Minecraft.getInstance().font, java.util.List.of(
+                final int shown = amount;
+                gfx.renderComponentTooltip(font, java.util.List.of(
                         fluid.getFluidType().getDescription(),
-                        Component.literal("Fluid template: stocked from the network into a "
-                                + InterfaceTanks.CAPACITY / 1000 + " bucket tank."),
+                        Component.literal("Fluid tank: " + shown + " / " + InterfaceTanks.CAPACITY + " mB"),
+                        Component.literal("Stocked from the network; pipes and tanks beside it take from it."),
+                        Component.literal("Fluid poured in from outside goes to the network."),
                         Component.literal("Right-click with an empty cursor to clear.")), mx, my);
             }
         }
+        gfx.pose().popPose();
     }
 }
