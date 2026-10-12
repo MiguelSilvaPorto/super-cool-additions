@@ -323,7 +323,8 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
             case 2 -> "Auto Trader";
             default -> "";
         };
-        g.drawString(this.font, "Village Chamber" + (kind.isEmpty() ? "" : "  ·  " + kind), this.leftPos + 8, this.topPos + 4, SccGui.ACCENT, false);
+        // the title itself is SCC's; the module goes at the right of the header
+        g.drawString(this.font, kind, this.leftPos + this.imageWidth - 8 - this.font.width(kind), this.topPos + 4, SccGui.MUTED, false);
         int mx = this.cycleOpen ? -1 : mouseX;
         int my = this.cycleOpen ? -1 : mouseY;
         this.drawVillager(g, mx, my);
