@@ -1,3 +1,6 @@
 {
-  "values": [ "sccadd:village_simulator" ]
+  "values": [
+    "sccadd:village_trader",
+    "sccadd:village_auto_trader"
+  ]
 }

@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ggg",
+    "gLg",
+    "iei"
+  ],
+  "key": {
+    "g": {
+      "item": "minecraft:glass"
+    },
+    "L": {
+      "item": "minecraft:lectern"
+    },
+    "i": {
+      "item": "minecraft:iron_ingot"
+    },
+    "e": {
+      "item": "minecraft:emerald"
+    }
+  },
+  "result": {
+    "id": "sccadd:village_trader",
+    "count": 1
+  }
+}

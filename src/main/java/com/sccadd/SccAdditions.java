@@ -30,6 +30,9 @@ public final class SccAdditions {
         if (ModList.get().isLoaded("easy_villagers")) {
             // The Village Simulator needs Easy Villagers' villager items.
             com.sccadd.village.VillageRegistry.init(modBus);
+            if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+                com.sccadd.village.client.VillageClient.init(modBus);
+            }
         }
         if (ModList.get().isLoaded("ae2")) {
             // Loaded only when AE2 is present; the class references AE2 types.
@@ -49,6 +52,7 @@ public final class SccAdditions {
         registrar.playToServer(SccPatternsPayload.TYPE, SccPatternsPayload.CODEC, SccPatternsPayload::handle);
         registrar.playToServer(com.sccadd.chain.ChainPayload.TYPE, com.sccadd.chain.ChainPayload.CODEC, com.sccadd.chain.ChainPayload::handle);
         registrar.playToServer(com.sccadd.machine.MachineForcePayload.TYPE, com.sccadd.machine.MachineForcePayload.CODEC, com.sccadd.machine.MachineForcePayload::handle);
+        registrar.optional().playToServer(com.sccadd.village.VillageConfigPayload.TYPE, com.sccadd.village.VillageConfigPayload.CODEC, com.sccadd.village.VillageConfigPayload::handle);
         registrar.playToServer(SlotRulesPayload.TYPE, SlotRulesPayload.CODEC, SlotRulesPayload::handle);
         registrar.playToServer(RequesterTargetPayload.TYPE, RequesterTargetPayload.CODEC, RequesterTargetPayload::handle);
         registrar.playToServer(SlotStock.Request.TYPE, SlotStock.Request.CODEC, SlotStock.Request::handle);

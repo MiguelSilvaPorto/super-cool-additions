@@ -44,7 +44,7 @@ final class VillageSelfTest {
             return 0;
         }
         BlockPos pos = BlockPos.containing(source.getPosition()).above(3);
-        level.setBlockAndUpdate(pos, VillageRegistry.SIMULATOR.get().defaultBlockState());
+        level.setBlockAndUpdate(pos, VillageRegistry.AUTO_TRADER.get().defaultBlockState());
         if (!(level.getBlockEntity(pos) instanceof VillageSimulatorBlockEntity be)) {
             source.sendFailure(Component.literal("no block entity at " + pos));
             return 0;

@@ -1,16 +1,16 @@
 package com.sccadd.village;
 
-import com.mojang.serialization.MapCodec;
-import de.scc.calculator.network.NetworkBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -18,21 +18,13 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * First draft: no screen yet, everything is done by using items on the block (see
- * {@link VillageSimulatorBlockEntity#useItem}).
- */
-public class VillageSimulatorBlock extends Block implements EntityBlock {
-    public static final MapCodec<VillageSimulatorBlock> CODEC = simpleCodec(VillageSimulatorBlock::new);
-
-    public VillageSimulatorBlock(Properties properties) {
+/** The glass box a villager lives in: hollow, so you can see it, with a floor. */
+public abstract class VillageBlockBase extends Block implements EntityBlock {
+    protected VillageBlockBase(Properties properties) {
         super(properties);
     }
 
-    @Override
-    protected MapCodec<? extends Block> codec() {
-        return CODEC;
-    }
+    public abstract boolean isAuto();
 
     @Nullable
     @Override
@@ -43,10 +35,25 @@ public class VillageSimulatorBlock extends Block implements EntityBlock {
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide || type != VillageRegistry.SIMULATOR_BE.get()) {
+        if (level.isClientSide || type != VillageRegistry.VILLAGE_BE.get()) {
             return null;
         }
         return (lvl, pos, st, be) -> ((VillageSimulatorBlockEntity) be).serverTick();
+    }
+
+    @Override
+    protected boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
+        return true;
+    }
+
+    @Override
+    protected float getShadeBrightness(BlockState state, BlockGetter level, BlockPos pos) {
+        return 1.0F;
+    }
+
+    @Override
+    protected RenderShape getRenderShape(BlockState state) {
+        return RenderShape.MODEL;
     }
 
     @Override
@@ -78,10 +85,5 @@ public class VillageSimulatorBlock extends Block implements EntityBlock {
             be.dropContents(level, pos);
         }
         super.onRemove(state, level, pos, newState, moved);
-    }
-
-    /** Keeps the import honest: the block is a network node like the rest of SCC's blocks. */
-    public static boolean isNode(BlockEntity be) {
-        return be instanceof NetworkBlockEntity;
     }
 }

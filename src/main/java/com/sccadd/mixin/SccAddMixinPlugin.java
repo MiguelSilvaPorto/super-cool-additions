@@ -28,7 +28,18 @@ public final class SccAddMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.contains(".Ae2")) {
             return this.ae2();
         }
+        if (mixinClassName.contains(".Village")) {
+            return this.easyVillagers();
+        }
         return true;
+    }
+
+    private boolean easyVillagers() {
+        try {
+            return LoadingModList.get().getModFileById("easy_villagers") != null;
+        } catch (Throwable failed) {
+            return false;
+        }
     }
 
     private boolean ae2() {

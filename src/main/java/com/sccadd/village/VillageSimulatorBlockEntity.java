@@ -8,8 +8,11 @@ import de.scc.calculator.network.NetworkBlockEntity;
 import de.scc.calculator.network.NetworkView;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -30,6 +33,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.trading.Merchant;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.world.level.Level;
@@ -42,10 +46,14 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * A villager that lives in the block. It is on the SCC network, so it pays its trades from the
- * network's stock. It trades emeralds to level up, looks for the trade you asked for at every
- * level, and hands what it buys to the network or to the inventories beside it.
+ * network's stock.
  *
- * <p>Draft: it is driven by using items on the block, there is no screen yet.</p>
+ * <ul>
+ *   <li><b>Trader</b>: you open its trade screen; the payment is taken from the network.</li>
+ *   <li><b>Auto Trader</b>: it trades the offers you picked, on its own, and hands what it buys to
+ *       the network or to the inventories beside it. It also trades emeralds to level up until the
+ *       offers you want are unlocked.</li>
+ * </ul>
  */
 public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
     public enum Output {
@@ -59,25 +67,53 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
     private static final int TRADES_PER_STEP = 16;
     private static final int MAX_PENDING = 64;
     private static final Method LEVEL_UP = levelUpMethod();
+    private static final Method START_TRADING = villagerMethod("startTrading", Player.class);
+    private static final Map<Merchant, VillageSimulatorBlockEntity> OWNERS = new WeakHashMap<>();
 
     private ItemStack villager = ItemStack.EMPTY;
     @Nullable
     private ResourceLocation workstation;
-    @Nullable
-    private StackKey wanted;
+    /** Auto Trader: the offers to trade, by {@link #signature}, with how many of the result to keep (0 = no limit). */
+    private final Map<String, Integer> picked = new LinkedHashMap<>();
+    /** Auto Trader: level the villager up with emerald trades until the picked offers are there. */
+    private boolean levelUp = true;
     private Output output = Output.NETWORK;
     private String state = "empty";
     private long lastRestock;
     private final List<ItemStack> pending = new ArrayList<>();
+    /** Version of the villager stack, so the client rebuilds its entity only when it changed. */
+    private int villagerVersion;
 
     @Nullable
     private EasyVillagerEntity entity;
+    @Nullable
+    private EasyVillagerEntity clientEntity;
+    private int clientVersion = -1;
     /** Diagnostics only: trades cost nothing, nothing is taken from a network. */
     private boolean freeTrades;
+    @Nullable
+    private StackKey testWanted;
     private int trades;
 
     public VillageSimulatorBlockEntity(BlockPos pos, BlockState state) {
-        super(VillageRegistry.SIMULATOR_BE.get(), pos, state);
+        super(VillageRegistry.VILLAGE_BE.get(), pos, state);
+    }
+
+    public boolean isAuto() {
+        return this.getBlockState().getBlock() instanceof VillageBlockBase base && base.isAuto();
+    }
+
+    @Nullable
+    public static VillageSimulatorBlockEntity ownerOf(Merchant merchant) {
+        synchronized (OWNERS) {
+            return OWNERS.get(merchant);
+        }
+    }
+
+    /** What identifies an offer across restocks and price changes: what it gives and what it takes. */
+    public static String signature(MerchantOffer offer) {
+        String b = offer.getCostB().isEmpty() ? "" : StackKey.of(offer.getCostB()).encode();
+        return StackKey.of(offer.getResult()).encode() + "|" + StackKey.of(offer.getCostA()).encode() + "|" + b;
     }
 
     // ---- hooks used by the block ----
@@ -96,13 +132,6 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
             player.displayClientMessage(Component.literal("Villager moved in."), true);
             return true;
         }
-        if (held.is(Items.HOPPER)) {
-            this.output = this.output == Output.NETWORK ? Output.NEARBY : Output.NETWORK;
-            this.changed();
-            player.displayClientMessage(Component.literal(this.output == Output.NETWORK
-                    ? "Output: back into the network" : "Output: nearby inventories first, then the network"), true);
-            return true;
-        }
         if (held.getItem() instanceof BlockItem blockItem && professionFor(blockItem.getBlock()) != null) {
             ResourceLocation old = this.workstation;
             this.workstation = BuiltInRegistries.BLOCK.getKey(blockItem.getBlock());
@@ -117,38 +146,66 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
             player.displayClientMessage(Component.literal("Workstation: " + blockItem.getBlock().getName().getString()), true);
             return true;
         }
-        // any other item is the trade you want: the villager looks for a trade that gives it
-        StackKey key = StackKey.of(held);
-        if (key.equals(this.wanted) && player.isShiftKeyDown()) {
-            this.wanted = null;
-            player.displayClientMessage(Component.literal("No trade wanted."), true);
-        } else {
-            this.wanted = key;
-            player.displayClientMessage(Component.literal("Looking for a trade that gives " + held.getHoverName().getString()), true);
-        }
-        this.changed();
-        return true;
+        return false;
     }
 
     public void useEmptyHand(Player player) {
-        if (player.isShiftKeyDown() && !this.villager.isEmpty()) {
-            this.saveEntity();
-            ItemHandlerHelper.giveItemToPlayer(player, this.villager);
-            this.villager = ItemStack.EMPTY;
-            this.entity = null;
-            this.state = "empty";
-            this.changed();
-            player.displayClientMessage(Component.literal("Villager taken out."), true);
+        if (player.isShiftKeyDown()) {
+            if (!this.villager.isEmpty()) {
+                this.saveEntity();
+                ItemHandlerHelper.giveItemToPlayer(player, this.villager);
+                this.villager = ItemStack.EMPTY;
+                this.entity = null;
+                this.state = "empty";
+                this.changed();
+                player.displayClientMessage(Component.literal("Villager taken out."), true);
+            } else {
+                for (String line : this.status()) {
+                    player.displayClientMessage(Component.literal(line), false);
+                }
+            }
             return;
         }
-        for (String line : this.status()) {
-            player.displayClientMessage(Component.literal(line), false);
+        if (this.isAuto()) {
+            VillageMenus.openConfig(player, this);
+        } else {
+            this.openTrade(player);
         }
+    }
+
+    /** The trade screen of the villager; what it costs comes out of the network, not your pockets. */
+    public void openTrade(Player player) {
+        EasyVillagerEntity villager = this.entity();
+        if (villager == null) {
+            player.displayClientMessage(Component.literal("No villager inside. Use an Easy Villagers villager item on the block."), true);
+        } else if (this.workstation == null || !this.fixProfession(villager)) {
+            player.displayClientMessage(Component.literal("The villager needs a workstation: use one on the block."), true);
+        } else if (villager.getOffers().isEmpty()) {
+            player.displayClientMessage(Component.literal("This villager has nothing to trade."), true);
+        } else if (villager.isTrading()) {
+            player.displayClientMessage(Component.literal("Someone is already trading."), true);
+        } else {
+            villager.setPos(this.worldPosition.getX() + 0.5, this.worldPosition.getY(), this.worldPosition.getZ() + 0.5);
+            this.startTrading(villager, player);
+        }
+    }
+
+    private void startTrading(EasyVillagerEntity villager, Player player) {
+        try {
+            if (START_TRADING != null) {
+                START_TRADING.invoke(villager, player);
+                return;
+            }
+        } catch (ReflectiveOperationException failed) {
+            // fall through to the plain way
+        }
+        villager.setTradingPlayer(player);
+        villager.openTradingScreen(player, villager.getDisplayName(), villager.getVillagerData().getLevel());
     }
 
     public List<String> status() {
         List<String> lines = new ArrayList<>();
-        lines.add("Village Simulator: " + this.state);
+        lines.add((this.isAuto() ? "Village Auto Trader: " : "Village Trader: ") + this.state);
         EasyVillagerEntity villager = this.entity();
         if (villager == null) {
             lines.add("Villager: none (use an Easy Villagers villager item on the block)");
@@ -158,9 +215,11 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
                     + " level " + data.getLevel() + ", xp " + villager.getVillagerXp());
         }
         lines.add("Workstation: " + (this.workstation == null ? "none" : this.workstation.toString()));
-        lines.add("Wants a trade for: " + (this.wanted == null ? "nothing (only levels up)" : this.wanted.display().getHoverName().getString()));
-        lines.add("Output: " + (this.output == Output.NETWORK ? "network" : "nearby inventories, then network")
-                + (this.pending.isEmpty() ? "" : ", " + this.pending.size() + " stack(s) waiting for room"));
+        if (this.isAuto()) {
+            lines.add("Trading " + this.picked.size() + " offer(s); output: "
+                    + (this.output == Output.NETWORK ? "network" : "nearby inventories, then network")
+                    + (this.pending.isEmpty() ? "" : ", " + this.pending.size() + " stack(s) waiting for room"));
+        }
         lines.add("Trades done: " + this.trades);
         return lines;
     }
@@ -180,16 +239,84 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
         }
     }
 
+    // ---- the configuration screen's view ----
+
+    public Map<String, Integer> picked() {
+        return this.picked;
+    }
+
+    public boolean levelUp() {
+        return this.levelUp;
+    }
+
+    public Output output() {
+        return this.output;
+    }
+
+    public void setLevelUp(boolean value) {
+        this.levelUp = value;
+        this.changed();
+    }
+
+    public void setOutput(Output value) {
+        this.output = value;
+        this.changed();
+    }
+
+    /** Picks or drops an offer; {@code keep} is how many of the result the network should hold (0 = no limit). */
+    public void pick(String signature, boolean on, int keep) {
+        if (on) {
+            this.picked.put(signature, Math.max(0, keep));
+        } else {
+            this.picked.remove(signature);
+        }
+        this.changed();
+    }
+
+    public MerchantOffers offers() {
+        EasyVillagerEntity villager = this.entity();
+        return villager == null ? new MerchantOffers() : villager.getOffers();
+    }
+
+    public String workstationName() {
+        Block block = this.workstation == null ? null : BuiltInRegistries.BLOCK.get(this.workstation);
+        return block == null ? "none" : block.getName().getString();
+    }
+
+    public String stateText() {
+        return this.state;
+    }
+
+    public ItemStack villagerStack() {
+        return this.villager;
+    }
+
     // ---- the work ----
 
     public void serverTick() {
         if (this.level == null || this.level.getGameTime() % STEP_EVERY != 7) {
             return;
         }
-        this.step();
+        if (this.isAuto()) {
+            this.step();
+        } else {
+            this.housekeeping();
+        }
     }
 
-    /** One pass of the work; also what the diagnostic command calls. */
+    /** The trader has no work of its own: it only keeps the villager's progress from trades you made. */
+    private void housekeeping() {
+        EasyVillagerEntity villager = this.entity;
+        if (villager != null && !villager.isTrading()) {
+            this.levelUpIfReady(villager);
+            this.saveEntity();
+            if (!villager.getOffers().isEmpty() && villager.getOffers().stream().allMatch(MerchantOffer::isOutOfStock)) {
+                this.restock(villager);
+            }
+        }
+    }
+
+    /** One pass of the Auto Trader's work; also what the diagnostic command calls. */
     public void step() {
         if (this.level == null || this.level.isClientSide) {
             return;
@@ -203,6 +330,8 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
             this.state = "needs a workstation";
         } else if (!this.fixProfession(villager)) {
             this.state = "the workstation gives no profession";
+        } else if (villager.isTrading()) {
+            this.state = "someone is trading";
         } else {
             NetworkView view = this.freeTrades ? null : this.network();
             if (!this.freeTrades && (view == null || !view.online())) {
@@ -222,58 +351,82 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
             this.state = "this villager has no trades";
             return;
         }
+        if (this.testWanted != null) {
+            for (MerchantOffer offer : offers) {
+                if (StackKey.of(offer.getResult()).equals(this.testWanted)) {
+                    this.picked.putIfAbsent(signature(offer), 0);
+                }
+            }
+        }
+        boolean any = false;
         for (int i = 0; i < TRADES_PER_STEP; i++) {
-            MerchantOffer wantedOffer = this.wantedOffer(offers);
-            if (wantedOffer != null) {
-                if (wantedOffer.isOutOfStock()) {
-                    if (!this.restock(villager)) {
-                        this.state = "the wanted trade is sold out, waiting for a restock";
-                        return;
+            offers = villager.getOffers();
+            boolean progressed = false;
+            boolean unlockedAll = true;
+            String why = null;
+            for (Map.Entry<String, Integer> pick : new ArrayList<>(this.picked.entrySet())) {
+                MerchantOffer offer = find(offers, pick.getKey());
+                if (offer == null) {
+                    unlockedAll = false;
+                    continue;
+                }
+                int keep = pick.getValue();
+                if (keep > 0 && view != null && view.count(StackKey.of(offer.getResult())) >= keep) {
+                    why = "stocked";
+                    continue;
+                }
+                if (offer.isOutOfStock()) {
+                    if (this.restock(villager)) {
+                        progressed = true;
+                    } else {
+                        why = "sold out, waiting for a restock";
                     }
                     continue;
                 }
-                if (!this.trade(villager, wantedOffer, view, true)) {
-                    return;
+                if (!this.payable(offer, view)) {
+                    why = "missing " + (this.has(offer.getCostA(), view) ? offer.getCostB() : offer.getCostA()).getHoverName().getString();
+                    continue;
                 }
+                if (this.trade(villager, offer, view)) {
+                    progressed = true;
+                    any = true;
+                }
+            }
+            if (progressed) {
+                this.levelUpIfReady(villager);
                 continue;
             }
             int level = villager.getVillagerData().getLevel();
-            if (level >= 5 && this.wanted != null) {
-                this.state = "the wanted trade is not offered at the top level";
-                return;
-            }
-            if (level >= 5 || this.wanted == null && !this.shouldLevel(villager)) {
-                this.state = this.wanted == null ? "idle (set a wanted trade)" : "the wanted trade is not offered at the top level";
-                return;
-            }
-            MerchantOffer levelling = this.levellingOffer(offers, view);
-            if (levelling == null) {
-                if (!this.anyAvailable(offers) && this.restock(villager)) {
+            boolean needsLevels = !unlockedAll || this.picked.isEmpty();
+            if (this.levelUp && needsLevels && level < 5) {
+                MerchantOffer levelling = this.levellingOffer(offers, view);
+                if (levelling != null && this.trade(villager, levelling, view)) {
+                    this.levelUpIfReady(villager);
+                    this.state = "levelling up";
+                    any = true;
+                    continue;
+                }
+                if (levelling == null && !this.anyAvailable(offers) && this.restock(villager)) {
                     continue;
                 }
                 this.state = "levelling up needs emeralds the network does not have";
-                return;
+            } else if (!unlockedAll) {
+                this.state = "a picked offer is not offered at this level";
+            } else {
+                this.state = why != null ? why : (this.picked.isEmpty() ? "idle (pick offers in the screen)" : "working");
             }
-            if (!this.trade(villager, levelling, view, false)) {
-                return;
-            }
-            this.levelUpIfReady(villager);
-            offers = villager.getOffers();
+            break;
+        }
+        if (any && !this.state.equals("levelling up")) {
+            this.state = "trading";
         }
         this.saveEntity();
     }
 
-    private boolean shouldLevel(EasyVillagerEntity villager) {
-        return villager.getVillagerData().getLevel() < 5;
-    }
-
     @Nullable
-    private MerchantOffer wantedOffer(MerchantOffers offers) {
-        if (this.wanted == null) {
-            return null;
-        }
+    private static MerchantOffer find(MerchantOffers offers, String signature) {
         for (MerchantOffer offer : offers) {
-            if (StackKey.of(offer.getResult()).equals(this.wanted)) {
+            if (signature(offer).equals(signature)) {
                 return offer;
             }
         }
@@ -313,28 +466,28 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
     }
 
     private boolean has(ItemStack cost, @Nullable NetworkView view) {
-        return cost.isEmpty() || view != null && view.count(StackKey.of(cost)) >= cost.getCount();
+        return this.freeTrades || cost.isEmpty() || view != null && view.count(StackKey.of(cost)) >= cost.getCount();
     }
 
-    private boolean trade(EasyVillagerEntity villager, MerchantOffer offer, @Nullable NetworkView view, boolean wantedTrade) {
+    private boolean trade(EasyVillagerEntity villager, MerchantOffer offer, @Nullable NetworkView view) {
         ItemStack a = offer.getCostA();
         ItemStack b = offer.getCostB();
         if (!this.payable(offer, view)) {
-            this.state = "missing " + (this.has(a, view) ? b : a).getHoverName().getString() + " in the network";
             return false;
         }
         if (!this.freeTrades && view != null) {
-            if (!take(view, a) || !take(view, b)) {
-                this.state = "could not take the payment from the network";
+            if (!take(view, a)) {
+                return false;
+            }
+            if (!take(view, b)) {
+                view.insert(a.copy(), false);
                 return false;
             }
         }
         offer.increaseUses();
         villager.setVillagerXp(villager.getVillagerXp() + offer.getXp());
         this.trades++;
-        ItemStack result = offer.getResult().copy();
-        this.deliver(result, view);
-        this.state = wantedTrade ? "trading for the wanted item" : "levelling up";
+        this.deliver(offer.getResult().copy(), view);
         return true;
     }
 
@@ -367,6 +520,9 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
     }
 
     private boolean restock(EasyVillagerEntity villager) {
+        if (this.level == null) {
+            return false;
+        }
         long now = this.level.getGameTime();
         if (now - this.lastRestock < 1200L) {
             return false;
@@ -452,6 +608,9 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
         }
         if (this.entity == null) {
             this.entity = VillagerData.createEasyVillager(this.villager, this.level);
+            synchronized (OWNERS) {
+                OWNERS.put(this.entity, this);
+            }
         }
         return this.entity;
     }
@@ -464,18 +623,35 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
 
     private void changed() {
         this.saveEntity();
+        this.villagerVersion++;
         this.setChanged();
+        this.sync();
+    }
+
+    /** Client side: the villager to draw in the box. */
+    @Nullable
+    public EasyVillagerEntity renderEntity() {
+        if (this.level == null || this.villager.isEmpty()) {
+            this.clientEntity = null;
+            return null;
+        }
+        if (this.clientEntity == null || this.clientVersion != this.villagerVersion) {
+            this.clientEntity = VillagerData.createEasyVillager(this.villager, this.level);
+            this.clientVersion = this.villagerVersion;
+        }
+        return this.clientEntity;
     }
 
     // ---- diagnostics ----
 
-    /** Used by the diagnostic command: a villager with a workstation and free trades. */
+    /** Used by the diagnostic command: a villager with a workstation, free trades and one wanted result. */
     public void selfTest(ItemStack villagerItem, Block workstation, StackKey wanted) {
         this.freeTrades = true;
         this.villager = villagerItem;
         this.entity = null;
         this.workstation = BuiltInRegistries.BLOCK.getKey(workstation);
-        this.wanted = wanted;
+        this.testWanted = wanted;
+        this.picked.clear();
         this.output = Output.NETWORK;
         this.pending.clear();
         this.trades = 0;
@@ -487,10 +663,6 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
 
     public List<ItemStack> waiting() {
         return this.pending;
-    }
-
-    public String stateText() {
-        return this.state;
     }
 
     public static ItemStack newVillagerItem(Level level, VillagerProfession profession) {
@@ -513,12 +685,19 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
         if (this.workstation != null) {
             tag.putString("sccadd_workstation", this.workstation.toString());
         }
-        if (this.wanted != null) {
-            tag.putString("sccadd_wanted", this.wanted.encode());
+        ListTag picks = new ListTag();
+        for (Map.Entry<String, Integer> pick : this.picked.entrySet()) {
+            CompoundTag entry = new CompoundTag();
+            entry.putString("sig", pick.getKey());
+            entry.putInt("keep", pick.getValue());
+            picks.add(entry);
         }
+        tag.put("sccadd_picked", picks);
+        tag.putBoolean("sccadd_levelup", this.levelUp);
         tag.putString("sccadd_output", this.output.name());
         tag.putString("sccadd_state", this.state);
         tag.putLong("sccadd_restock", this.lastRestock);
+        tag.putInt("sccadd_version", this.villagerVersion);
         ListTag list = new ListTag();
         for (ItemStack stack : this.pending) {
             list.add(stack.save(provider));
@@ -532,7 +711,13 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
         this.villager = tag.contains("sccadd_villager") ? ItemStack.parseOptional(provider, tag.getCompound("sccadd_villager")) : ItemStack.EMPTY;
         this.entity = null;
         this.workstation = tag.contains("sccadd_workstation") ? ResourceLocation.tryParse(tag.getString("sccadd_workstation")) : null;
-        this.wanted = tag.contains("sccadd_wanted") ? StackKey.decode(tag.getString("sccadd_wanted")) : null;
+        this.picked.clear();
+        ListTag picks = tag.getList("sccadd_picked", Tag.TAG_COMPOUND);
+        for (int i = 0; i < picks.size(); i++) {
+            CompoundTag entry = picks.getCompound(i);
+            this.picked.put(entry.getString("sig"), entry.getInt("keep"));
+        }
+        this.levelUp = !tag.contains("sccadd_levelup") || tag.getBoolean("sccadd_levelup");
         try {
             this.output = Output.valueOf(tag.getString("sccadd_output"));
         } catch (IllegalArgumentException unknown) {
@@ -540,6 +725,7 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
         }
         this.state = tag.contains("sccadd_state") ? tag.getString("sccadd_state") : "empty";
         this.lastRestock = tag.getLong("sccadd_restock");
+        this.villagerVersion = tag.getInt("sccadd_version");
         this.pending.clear();
         ListTag list = tag.getList("sccadd_pending", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
@@ -552,8 +738,13 @@ public final class VillageSimulatorBlockEntity extends NetworkBlockEntity {
 
     @Nullable
     private static Method levelUpMethod() {
+        return villagerMethod("increaseMerchantCareer");
+    }
+
+    @Nullable
+    private static Method villagerMethod(String name, Class<?>... parameters) {
         try {
-            Method method = Villager.class.getDeclaredMethod("increaseMerchantCareer");
+            Method method = Villager.class.getDeclaredMethod(name, parameters);
             method.setAccessible(true);
             return method;
         } catch (ReflectiveOperationException | RuntimeException missing) {
