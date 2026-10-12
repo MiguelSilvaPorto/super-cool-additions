@@ -92,6 +92,15 @@ final class VillageSelfTest {
             return;
         }
         var source = event.getServer().createCommandSourceStack().withPermission(4);
+        {
+            var level = event.getServer().overworld();
+            var at = new net.minecraft.core.BlockPos(40, 120, 40);
+            level.setBlockAndUpdate(at, com.sccadd.iface.CompactInterface.BLOCK.get().defaultBlockState());
+            var be = level.getBlockEntity(at);
+            System.out.println("VILLAGETEST compact interface: block entity " + (be == null ? "NONE" : be.getClass().getSimpleName())
+                    + ", shape " + com.sccadd.iface.CompactInterface.BLOCK.get().defaultBlockState().getShape(level, at).bounds());
+            level.setBlockAndUpdate(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        }
         for (String bench : new String[] {"composter", "cartography_table", "lectern", "blast_furnace"}) {
             run(source, bench, false);
         }

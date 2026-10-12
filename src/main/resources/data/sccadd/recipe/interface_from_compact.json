@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [ { "item": "sccadd:interface_compact" } ],
+  "result": { "id": "scc:interface", "count": 1 }
+}

@@ -27,6 +27,7 @@ public final class SccAdditions {
         container.registerConfig(ModConfig.Type.COMMON, SccAddConfig.SPEC);
         modBus.addListener(SccAdditions::registerPayloads);
         modBus.addListener(SccAdditions::registerCapabilities);
+        com.sccadd.iface.CompactInterface.init(modBus);
         if (ModList.get().isLoaded("easy_villagers")) {
             // The Village Simulator needs Easy Villagers' villager items.
             com.sccadd.village.VillageRegistry.init(modBus);

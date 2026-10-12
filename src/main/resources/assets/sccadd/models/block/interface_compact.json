@@ -1,0 +1,35 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "north": "scc:block/interface_front",
+    "south": "scc:block/interface_back",
+    "east": "scc:block/interface_side",
+    "west": "scc:block/interface_side",
+    "up": "scc:block/interface_top",
+    "down": "scc:block/interface_back",
+    "particle": "scc:block/interface_side"
+  },
+  "elements": [
+    {
+      "from": [2, 2, 0], "to": [14, 14, 3],
+      "faces": {
+        "north": { "texture": "#north" },
+        "south": { "texture": "#south" },
+        "east": { "texture": "#east" },
+        "west": { "texture": "#west" },
+        "up": { "texture": "#up" },
+        "down": { "texture": "#down" }
+      }
+    },
+    {
+      "from": [4, 4, 3], "to": [12, 12, 10],
+      "faces": {
+        "south": { "texture": "#south" },
+        "east": { "texture": "#east" },
+        "west": { "texture": "#west" },
+        "up": { "texture": "#up" },
+        "down": { "texture": "#down" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "sccadd:block/interface_compact" },
+    "facing=east": { "model": "sccadd:block/interface_compact", "y": 90 },
+    "facing=south": { "model": "sccadd:block/interface_compact", "y": 180 },
+    "facing=west": { "model": "sccadd:block/interface_compact", "y": 270 }
+  }
+}
