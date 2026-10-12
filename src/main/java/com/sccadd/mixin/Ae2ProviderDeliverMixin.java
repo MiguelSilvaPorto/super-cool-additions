@@ -81,7 +81,18 @@ public abstract class Ae2ProviderDeliverMixin {
         }
         ICraftingService crafting = gridNode.getGrid().getCraftingService();
         MEStorage inventory = gridNode.getGrid().getStorageService().getInventory();
-        for (AEKey key : this.offer.keySet()) {
+        java.util.Set<AEKey> candidates = new java.util.HashSet<>(this.offer.keySet());
+        int guard = 0;
+        for (StackKey networkKey : view.contents().keySet()) {
+            if (++guard > 5_000) {
+                break;
+            }
+            AEItemKey ae = AEItemKey.of(networkKey.display());
+            if (ae != null) {
+                candidates.add(ae);
+            }
+        }
+        for (AEKey key : candidates) {
             if (this.emitted.contains(key)) {
                 continue; // SCC's own service loop handles the emitable ones
             }
@@ -89,6 +100,9 @@ public abstract class Ae2ProviderDeliverMixin {
                 continue;
             }
             StackKey wanted = this.offer.get(key);
+            if (wanted == null) {
+                wanted = StackKey.of(item.toStack(1));
+            }
             if (wanted == null) {
                 continue;
             }

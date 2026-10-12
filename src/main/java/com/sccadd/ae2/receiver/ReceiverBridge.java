@@ -226,20 +226,32 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
     }
 
     /**
-     * Hands finished items to waiting AE2 jobs. Covers <em>every</em> offered key:
-     * emitable ones (AE2 waits for the provider to deliver) and pattern ones
-     * (AE2 pushed the ingredients, but still waits for the output).
+     * Hands finished items to waiting AE2 jobs. Covers every item the SCC network
+     * actually has (plus the current offer): a job that was requested earlier keeps
+     * getting served even if the item is no longer in the offer.
      */
     private void service(ServerLevel level, IGrid grid, ICraftingService crafting, NetworkView view) {
-        if (this.offer.isEmpty()) {
-            return;
-        }
         MEStorage inventory = grid.getStorageService().getInventory();
-        for (AEKey key : this.offer.keySet()) {
+        java.util.Set<AEKey> candidates = new java.util.HashSet<>();
+        int guard = 0;
+        for (StackKey key : view.contents().keySet()) {
+            if (++guard > 5_000) {
+                break;
+            }
+            AEItemKey ae = AEItemKey.of(key.display());
+            if (ae != null) {
+                candidates.add(ae);
+            }
+        }
+        candidates.addAll(this.offer.keySet());
+        for (AEKey key : candidates) {
             if (!(key instanceof AEItemKey item) || !crafting.isRequesting(key)) {
                 continue;
             }
             StackKey wanted = this.offer.get(key);
+            if (wanted == null) {
+                wanted = StackKey.of(item.toStack(1));
+            }
             if (wanted == null) {
                 continue;
             }
