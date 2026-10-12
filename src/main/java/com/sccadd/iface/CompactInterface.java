@@ -39,7 +39,7 @@ public final class CompactInterface extends InterfaceBlock {
             () -> new CompactInterface(BlockBehaviour.Properties.ofFullCopy(SccRegistry.INTERFACE.get()).noOcclusion()));
     public static final DeferredItem<BlockItem> ITEM = ITEMS.registerSimpleBlockItem("interface_compact", BLOCK);
 
-    private static final VoxelShape NORTH = Shapes.or(Block.box(2, 2, 0, 14, 14, 3), Block.box(4, 4, 3, 12, 12, 10));
+    private static final VoxelShape NORTH = Shapes.or(Block.box(2, 2, 6, 14, 14, 9), Block.box(4, 4, 9, 12, 12, 16));
     private static final VoxelShape EAST = turn(NORTH);
     private static final VoxelShape SOUTH = turn(EAST);
     private static final VoxelShape WEST = turn(SOUTH);
