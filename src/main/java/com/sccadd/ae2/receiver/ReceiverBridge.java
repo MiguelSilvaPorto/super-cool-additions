@@ -263,8 +263,21 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
     }
 
     void patternsArrived(String text) {
+        long started = System.nanoTime();
         List<SccAe2Recipe> recipes = SccAddConfig.sccPatternsInAe2() ? SccAe2Recipe.parse(text) : List.of();
+        long before = SccAe2PatternStore.version(this.be);
         SccAe2PatternStore.setRecipes(this.be, recipes);
+        if (SccAe2PatternStore.version(this.be) != before) {
+            // Build the AE2 patterns now and tell AE2 right away. Waiting for the periodic
+            // tick check made the new recipes show up ~20 s late (and never without a CPU).
+            SccAe2PatternStore.patterns(this.be);
+            this.seenPatternVersion = SccAe2PatternStore.version(this.be);
+            ICraftingProvider.requestUpdate(this.main);
+        }
+        if (SccAddConfig.ae2DebugOffer()) {
+            SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString() + ": " + recipes.size()
+                    + " recipe(s) parsed + built + announced to AE2 in " + (System.nanoTime() - started) / 1_000_000L + " ms");
+        }
         Map<AEKey, StackKey> next = this.pendingOffer != null ? this.pendingOffer : this.offer;
         this.pendingOffer = null;
         this.commit(next, recipes);

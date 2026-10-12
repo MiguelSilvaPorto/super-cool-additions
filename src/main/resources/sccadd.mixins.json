@@ -29,6 +29,9 @@
     "client.Ae2TerminalScreenMixin",
     "client.Ae2OfferPatternsMixin",
     "client.AnalysisFingerprintMixin",
+    "client.TerminalBarEntryAccess",
+    "client.TerminalBarLayoutMixin",
+    "client.TerminalListVariantMixin",
     "RequesterPlannerInvoker",
     "CraftSimInvoker"
   ],

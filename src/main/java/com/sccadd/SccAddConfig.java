@@ -26,6 +26,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
+    public static final ModConfigSpec.BooleanValue TERMINAL_CLEAN_VARIANTS;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -147,6 +148,15 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment("SCC terminal additions.").push("terminal");
+
+        TERMINAL_CLEAN_VARIANTS = builder
+                .comment("Hide craftable-only variants with enchantments, attribute changes, a custom name or lore.",
+                        "Items the network really holds are always shown. Toggle with the 'Clean variants' bar button.")
+                .define("cleanVariants", true);
+
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -207,6 +217,15 @@ public final class SccAddConfig {
 
     public static boolean smartPlanner() {
         return PLANNER_SMART_PICK.get();
+    }
+
+    public static boolean cleanVariants() {
+        return TERMINAL_CLEAN_VARIANTS.get();
+    }
+
+    public static void setCleanVariants(boolean value) {
+        TERMINAL_CLEAN_VARIANTS.set(value);
+        TERMINAL_CLEAN_VARIANTS.save();
     }
 
     public static boolean resilientAnalysisCache() {
