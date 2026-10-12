@@ -71,12 +71,25 @@ public abstract class Ae2ProviderDebugMixin {
             int cpus = crafting == null ? -1 : crafting.getCpus().size();
             NetworkView view = this.be.network();
             TerminalBlockEntity terminal = view == null ? null : view.terminalNear(server);
+            StringBuilder names = new StringBuilder();
+            int shown = 0;
+            for (AEKey key : this.offer.keySet()) {
+                if (shown++ >= 8) {
+                    names.append(" ...");
+                    break;
+                }
+                if (names.length() > 0) {
+                    names.append(", ");
+                }
+                names.append(key.getDisplayName().getString());
+            }
             SccLog.info("sccadd", "offer debug at " + this.be.getBlockPos().toShortString()
                     + ": active=" + active
                     + " cpus=" + cpus
                     + " terminal=" + (terminal != null)
                     + " offer=" + this.offer.size()
-                    + " emitted=" + this.emitted.size());
+                    + " emitted=" + this.emitted.size()
+                    + (names.length() == 0 ? "" : " items=[" + names + "]"));
         } catch (Throwable failed) {
             // never let a diagnosis break the tick
         }
