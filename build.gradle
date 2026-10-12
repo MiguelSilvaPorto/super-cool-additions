@@ -22,6 +22,12 @@ neoForge {
         client {
             client()
             gameDirectory = layout.projectDirectory.dir('run')
+            jvmArguments.addAll(
+                    '-XX:+IgnoreUnrecognizedVMOptions',
+                    '-XX:+AllowEnhancedClassRedefinition',
+                    "-javaagent:${layout.buildDirectory.file('agent/hotswap-agent.jar').get().asFile.absolutePath}=" +
+                            sourceSets.main.output.classesDirs.singleFile.absolutePath
+            )
         }
         server {
             server()
@@ -33,6 +39,24 @@ neoForge {
         sccadd {
             sourceSet sourceSets.main
         }
+    }
+}
+
+// Development-only hot-swap agent (see src/agent): reloads changed classes in the
+// running client so logic fixes do not need a restart.
+sourceSets {
+    agent {
+        java.srcDir 'src/agent/java'
+    }
+}
+
+tasks.register('agentJar', Jar) {
+    from sourceSets.agent.output
+    archiveFileName = 'hotswap-agent.jar'
+    destinationDirectory = layout.buildDirectory.dir('agent')
+    manifest {
+        attributes 'Premain-Class': 'com.sccadd.agent.HotswapAgent',
+                'Can-Redefine-Classes': 'true'
     }
 }
 
@@ -81,6 +105,7 @@ tasks.register('copyServerMods', Sync) {
 
 tasks.matching { it.name == 'runClient' || it.name == 'prepareClientRun' }.configureEach {
     dependsOn 'copyClientMods'
+    dependsOn 'agentJar'
 }
 
 tasks.matching { it.name == 'runServer' || it.name == 'prepareServerRun' }.configureEach {
