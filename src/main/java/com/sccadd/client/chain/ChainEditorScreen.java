@@ -212,9 +212,6 @@ public final class ChainEditorScreen extends Screen {
     // ---- editing ----
 
     private void addBox() {
-        if (this.chain.nodes.size() >= ChainData.MAX_NODES) {
-            return;
-        }
         ChainData.Node node = new ChainData.Node();
         int next = 1;
         for (ChainData.Node other : this.chain.nodes) {

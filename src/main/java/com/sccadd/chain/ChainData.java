@@ -15,8 +15,6 @@ import net.minecraft.nbt.Tag;
  * the arrows give, round and round.
  */
 public final class ChainData {
-    public static final int MAX_NODES = 64;
-
     public static final class Node {
         public int id;
         public int x;
@@ -63,7 +61,7 @@ public final class ChainData {
             node.step = tag.getString("step");
             node.have = Math.max(0L, tag.getLong("have"));
             ListTag alt = tag.getList("alts", Tag.TAG_STRING);
-            for (int i = 0; i < Math.min(32, alt.size()); i++) {
+            for (int i = 0; i < alt.size(); i++) {
                 node.alts.add(alt.getString(i));
             }
             return node;
@@ -145,7 +143,7 @@ public final class ChainData {
         ChainData data = new ChainData();
         data.startId = tag.getInt("start");
         ListTag list = tag.getList("nodes", Tag.TAG_COMPOUND);
-        for (int i = 0; i < Math.min(MAX_NODES, list.size()); i++) {
+        for (int i = 0; i < list.size(); i++) {
             data.nodes.add(Node.load(list.getCompound(i)));
         }
         int[] flat = tag.getIntArray("links");
