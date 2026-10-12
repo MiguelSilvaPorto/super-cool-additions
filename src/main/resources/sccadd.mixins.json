@@ -25,12 +25,14 @@
     "Ae2MeStoreInvoker",
     "NetworkViewAdd",
     "InterfaceTemplateGuardMixin",
-    "InterfaceTanksMixin"
+    "InterfaceTanksMixin",
+    "ProcessorForcedMachineMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
     "client.InterfaceScreenFluidMixin",
     "client.RequesterChainMixin",
+    "client.ProcessorConfigMachineMixin",
     "client.CustomRecipeBookMixin",
     "client.Ae2TerminalScreenMixin",
     "client.Ae2OfferPatternsMixin",
