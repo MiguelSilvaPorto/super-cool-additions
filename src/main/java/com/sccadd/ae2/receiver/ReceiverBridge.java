@@ -175,7 +175,9 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             StackKey anchor = StackKey.of(new ItemStack(SccRegistry.WIRELESS_RECEIVER.get()));
             if (anchor != null && FuelOrders.request(server, this.be.getBlockPos(), view, anchor, 1, FuelOrders.AE2_OFFER_ROW)) {
                 this.askedAt = now;
-                SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString() + ": asking what SCC can build");
+                SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
+                        + ": asking what SCC can build (linked=" + this.be.linked()
+                        + ", transmitter=" + (this.be.transmitter() != null) + ")");
             }
         }
         this.service(server, node.getGrid(), crafting, view);
