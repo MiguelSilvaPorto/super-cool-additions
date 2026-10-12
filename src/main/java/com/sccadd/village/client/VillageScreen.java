@@ -8,6 +8,7 @@ import de.maxhenkel.easyvillagers.entity.EasyVillagerEntity;
 import de.scc.calculator.client.screen.SccContainerScreen;
 import de.scc.calculator.client.screen.SccGui;
 import de.scc.calculator.client.screen.SccTextInput;
+import de.scc.calculator.network.SccTier;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -45,6 +46,7 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
     private int benchScroll;
     private int refreshIn;
     private boolean naming;
+    private int keepEditing = -1;
     private String typed = "";
 
     public VillageScreen(VillageMenu menu, Inventory inventory, Component title) {
@@ -165,16 +167,33 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
         if (this.naming && !in(mx, my, this.vx(), this.vy() + 84, LEFT_W, 12)) {
             this.commitName();
         }
+        boolean clickedKeep = false;
         for (int row = 0; row < ROWS; row++) {
             int index = this.scroll + row;
             if (index >= this.view.offers().size()) {
                 break;
             }
             int y = this.listY() + row * ROW_H;
+            if (in(mx, my, this.listX() + 92, y + 2, 30, ROW_H - 6)) {
+                if (this.keepEditing >= 0 && this.keepEditing != index) {
+                    this.commitKeep();
+                }
+                this.keepEditing = index;
+                int keep = index < this.view.keeps().size() ? this.view.keeps().get(index) : 0;
+                this.typed = keep == 0 ? "" : String.valueOf(keep);
+                clickedKeep = true;
+                break;
+            }
             if (in(mx, my, this.listX() + 124, y + 2, 48, ROW_H - 6)) {
+                if (this.keepEditing >= 0) {
+                    this.commitKeep();
+                }
                 this.send(VillageConfigPayload.TRADE, index, Screen.hasControlDown() ? 64 : Screen.hasShiftDown() ? 10 : 1, "");
                 return true;
             }
+        }
+        if (!clickedKeep && this.keepEditing >= 0) {
+            this.commitKeep();
         }
         int x = this.vx();
         if (this.view.hasVillager() && in(mx, my, x, this.vy() + 84, LEFT_W, 12)) {
@@ -262,6 +281,32 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
         this.naming = false;
     }
 
+    private void commitKeep() {
+        if (this.keepEditing < 0) {
+            return;
+        }
+        int index = this.keepEditing;
+        this.keepEditing = -1;
+        int amount = 0;
+        try {
+            amount = this.typed.isEmpty() ? 0 : Integer.parseInt(this.typed);
+        } catch (NumberFormatException tooBig) {
+            amount = 99_999;
+        }
+        this.send(VillageConfigPayload.KEEP, index, Math.max(0, Math.min(99_999, amount)), "");
+    }
+
+    /** A short number for the keep field: 1k, 25k, 99k. */
+    private static String compact(int value) {
+        if (value >= 1_000_000) {
+            return (value / 1_000_000) + "M";
+        }
+        if (value >= 1_000) {
+            return (value / 1_000) + "k";
+        }
+        return String.valueOf(value);
+    }
+
     @Override
     protected boolean sccMouseScrolled(double mx, double my, double dx, double dy) {
         int step = -(int) Math.signum(dy);
@@ -279,6 +324,12 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
 
     @Override
     public boolean charTyped(char ch, int modifiers) {
+        if (this.keepEditing >= 0) {
+            if (ch >= '0' && ch <= '9' && this.typed.length() < 5) {
+                this.typed += ch;
+            }
+            return true;
+        }
         if (this.naming && ch >= ' ' && this.typed.length() < 40) {
             this.typed += ch;
             return true;
@@ -288,6 +339,18 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
 
     @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
+        if (this.keepEditing >= 0) {
+            if (key == 257 || key == 335) {
+                this.commitKeep();
+            } else if (key == 259) {
+                if (!this.typed.isEmpty()) {
+                    this.typed = this.typed.substring(0, this.typed.length() - 1);
+                }
+            } else if (key == 256) {
+                this.keepEditing = -1;
+            }
+            return true;
+        }
         if (this.naming) {
             if (key == 257 || key == 335) {
                 this.commitName();
@@ -323,8 +386,12 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
             case 2 -> "Auto Trader";
             default -> "";
         };
-        // the title itself is SCC's; the module goes at the right of the header
-        g.drawString(this.font, kind, this.leftPos + this.imageWidth - 8 - this.font.width(kind), this.topPos + 4, SccGui.MUTED, false);
+        // the title itself is SCC's; the module and the tier go at the right of the header
+        SccTier tier = SccTier.values()[Math.max(0, Math.min(this.view.tier(), SccTier.values().length - 1))];
+        String tierName = Component.translatable("scc.tier." + tier.id()).getString();
+        String head = kind.isEmpty() ? tierName : kind + "  ·  " + tierName;
+        g.drawString(this.font, head, this.leftPos + this.imageWidth - 8 - this.font.width(head), this.topPos + 4,
+                0xFF000000 | tier.color(), false);
         int mx = this.cycleOpen ? -1 : mouseX;
         int my = this.cycleOpen ? -1 : mouseY;
         this.drawVillager(g, mx, my);
@@ -418,6 +485,21 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
             }
             g.drawString(this.font, "→", x + 58, y + 8, SccGui.MUTED, false);
             this.item(g, offer.getResult(), x + 70, y + 3, mouseX, mouseY);
+            // the keep field: how much of this trade's result the network should always hold
+            int keep = index < this.view.keeps().size() ? this.view.keeps().get(index) : 0;
+            boolean editing = this.keepEditing == index;
+            boolean keepHover = in(mouseX, mouseY, x + 92, y + 2, 30, ROW_H - 6);
+            g.fill(x + 92, y + 2, x + 122, y + ROW_H - 4, editing ? 0xFF10161C : (keep > 0 ? 0xFF14261C : (keepHover ? SccGui.ROW_HOVER : 0xFF10161C)));
+            SccGui.outline(g, x + 92, y + 2, 30, ROW_H - 6, editing || keep > 0 ? SccGui.ACCENT : SccGui.BORDER);
+            String keepText = editing ? (this.typed.isEmpty() ? "_" : this.typed) : (keep > 0 ? compact(keep) : "keep");
+            g.drawString(this.font, keepText, x + 92 + (30 - this.font.width(keepText)) / 2, y + 8,
+                    editing || keep > 0 ? SccGui.ACCENT : SccGui.MUTED, false);
+            if (keepHover && !editing) {
+                SccGui.tooltip(g, this.font, List.of(Component.literal("Keep this much of it in stock."),
+                        Component.literal("The chamber trades on its own to keep up: " + this.view.tradesPerSecond() + " trade(s)/s,"),
+                        Component.literal("up to " + SccGui.num(this.view.keepCap()) + " per trade, paid from the network."),
+                        Component.literal("Click to type an amount; 0 turns it off.")), mouseX, mouseY);
+            }
             boolean out = offer.isOutOfStock();
             boolean hover = in(mouseX, mouseY, x + 124, y + 2, 48, ROW_H - 6);
             g.fill(x + 124, y + 2, x + 172, y + ROW_H - 4, out ? 0xFF3A2222 : (hover ? SccGui.ROW_HOVER : 0xFF10161C));
@@ -460,12 +542,16 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
         int pw = this.popW();
         SccGui.panel(g, px, py, pw, this.popH(), SccGui.BG);
         SccGui.header(g, px + 1, py + 1, pw - 2, 14);
-        g.drawString(this.font, "Cycle  ·  waiting in the system", px + 8, py + 4, SccGui.ACCENT, false);
+        g.drawString(this.font, "Cycle  ·  kept in the chamber (" + this.view.stored() + "/" + this.view.villagerCap() + ")", px + 8, py + 4, SccGui.ACCENT, false);
         g.drawString(this.font, "Villagers", px + 8, py + 22, SccGui.TEXT, false);
         this.button(g, px + pw - 128, py + 18, 120, "Store current", mouseX, mouseY);
         if (in(mouseX, mouseY, px + pw - 128, py + 18, 120, 16)) {
-            SccGui.tooltip(g, this.font, List.of(Component.literal("Moves the villager and its workstation"),
-                    Component.literal("into the system. Nothing is copied.")), mouseX, mouseY);
+            SccGui.tooltip(g, this.font, List.of(
+                    Component.literal("Puts the villager into the chamber's own stock (" + this.view.stored() + "/" + this.view.villagerCap() + ")."),
+                    Component.literal(this.view.villagerEnergy() > 0
+                            ? "A new one costs " + SccGui.num(this.view.villagerEnergy()) + " FE here."
+                            : "Free at this tier."),
+                    Component.literal("The workstation goes to the system.")), mouseX, mouseY);
         }
         List<VillageView.Villager> villagers = this.view.villagers();
         if (villagers.isEmpty()) {

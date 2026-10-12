@@ -1,5 +1,13 @@
 {
   "block.sccadd.village_chamber": "Village Chamber",
+  "block.sccadd.village_chamber_red_dwarf": "Village Chamber (Red Dwarf)",
+  "block.sccadd.village_chamber_yellow_star": "Village Chamber (Yellow Star)",
+  "block.sccadd.village_chamber_blue_giant": "Village Chamber (Blue Giant)",
+  "block.sccadd.village_chamber_neutron_star": "Village Chamber (Neutron Star)",
+  "block.sccadd.village_chamber_singularity": "Village Chamber (Singularity)",
   "block.sccadd.interface_compact": "Compact Interface",
-  "sccadd.tab": "SCC Additions"
+  "sccadd.tip.tier": "Tier: %s",
+  "sccadd.tip.upgrade": "SCC's tier upgrade items carry it up a tier",
+  "sccadd.tab": "SCC Additions",
+  "scc.power.source.ae2": "AE2"
 }

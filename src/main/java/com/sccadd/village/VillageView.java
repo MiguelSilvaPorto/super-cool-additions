@@ -15,6 +15,7 @@ import net.minecraft.world.item.trading.MerchantOffers;
  */
 public record VillageView(
         int module,
+        int tier,
         boolean hasVillager,
         String profession,
         int level,
@@ -29,7 +30,14 @@ public record VillageView(
         int xpMode,
         String state,
         List<Villager> villagers,
-        List<Bench> benches) {
+        List<Bench> benches,
+        List<Integer> keeps,
+        int keepCap,
+        int villagerCap,
+        int stored,
+        int tradesPerSecond,
+        int tradeEnergy,
+        int villagerEnergy) {
 
     /** A villager item in the system. */
     public record Villager(String code, String name, String profession, int level, int count, List<MerchantOffer> offers) {
@@ -39,8 +47,8 @@ public record VillageView(
     public record Bench(String code, ItemStack stack, long count) {
     }
 
-    public static final VillageView EMPTY = new VillageView(0, false, "", 1, 0, 0, 0, false, "", ItemStack.EMPTY, List.of(), 0, 0,
-            "", List.of(), List.of());
+    public static final VillageView EMPTY = new VillageView(0, 0, false, "", 1, 0, 0, 0, false, "", ItemStack.EMPTY, List.of(), 0, 0,
+            "", List.of(), List.of(), List.of(), 1_000, 1, 0, 1, 0, 0);
 
     public static final StreamCodec<RegistryFriendlyByteBuf, VillageView> CODEC = StreamCodec.of(VillageView::write, VillageView::read);
 
@@ -56,6 +64,7 @@ public record VillageView(
 
     private static void write(RegistryFriendlyByteBuf buf, VillageView view) {
         buf.writeVarInt(view.module);
+        buf.writeVarInt(view.tier);
         buf.writeBoolean(view.hasVillager);
         buf.writeUtf(view.profession);
         buf.writeVarInt(view.level);
@@ -84,10 +93,21 @@ public record VillageView(
             ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, bench.stack);
             buf.writeVarLong(bench.count);
         }
+        buf.writeVarInt(view.keeps.size());
+        for (int target : view.keeps) {
+            buf.writeVarInt(target);
+        }
+        buf.writeVarInt(view.keepCap);
+        buf.writeVarInt(view.villagerCap);
+        buf.writeVarInt(view.stored);
+        buf.writeVarInt(view.tradesPerSecond);
+        buf.writeVarInt(view.tradeEnergy);
+        buf.writeVarInt(view.villagerEnergy);
     }
 
     private static VillageView read(RegistryFriendlyByteBuf buf) {
         int module = buf.readVarInt();
+        int tier = buf.readVarInt();
         boolean hasVillager = buf.readBoolean();
         String profession = buf.readUtf();
         int level = buf.readVarInt();
@@ -111,7 +131,13 @@ public record VillageView(
         for (int i = 0; i < benchCount; i++) {
             benches.add(new Bench(buf.readUtf(1024), ItemStack.OPTIONAL_STREAM_CODEC.decode(buf), buf.readVarLong()));
         }
-        return new VillageView(module, hasVillager, profession, level, xp, xpFrom, xpTo, top, name, bench, offers, output, xpMode, state,
-                villagers, benches);
+        int keepCount = buf.readVarInt();
+        List<Integer> keeps = new ArrayList<>(keepCount);
+        for (int i = 0; i < keepCount; i++) {
+            keeps.add(buf.readVarInt());
+        }
+        return new VillageView(module, tier, hasVillager, profession, level, xp, xpFrom, xpTo, top, name, bench, offers, output, xpMode,
+                state, villagers, benches, keeps, buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(),
+                buf.readVarInt());
     }
 }

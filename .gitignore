@@ -26,3 +26,6 @@ SuperCoolCalculator/
 # Misc
 *.log
 *.bak
+
+# Village self-test run (own world and port, so it never fights the normal test server)
+run-village/

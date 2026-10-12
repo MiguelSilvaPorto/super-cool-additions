@@ -1,6 +1,9 @@
 package com.sccadd.village;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import de.scc.calculator.network.SccRegistry;
+import de.scc.calculator.network.SccTier;
+import de.scc.calculator.network.TierUpgrades;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -28,7 +31,67 @@ final class VillageSelfTest {
                         .then(Commands.argument("workstation", StringArgumentType.word())
                                 .executes(context -> run(context.getSource(), StringArgumentType.getString(context, "workstation"), false))
                                 .then(Commands.literal("auto")
-                                        .executes(context -> run(context.getSource(), StringArgumentType.getString(context, "workstation"), true))))));
+                                        .executes(context -> run(context.getSource(), StringArgumentType.getString(context, "workstation"), true)))))
+                .then(Commands.literal("villagetier")
+                        .executes(context -> tierTest(context.getSource()))));
+    }
+
+    /** {@code /sccadd villagetier}: walks a chamber up every tier with SCC's own upgrade path and reports. */
+    static int tierTest(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        BlockPos pos = BlockPos.containing(source.getPosition()).above(4);
+        StringBuilder out = new StringBuilder("villagetier:");
+        // SCC's registry has to answer for our blocks, at any tier (a yellow chamber is not "basic").
+        level.setBlockAndUpdate(pos, VillageRegistry.CHAMBERS.get(SccTier.YELLOW_STAR).get().defaultBlockState());
+        out.append(" tierOf(yellow) ").append(SccRegistry.sharedTierOf(level.getBlockState(pos).getBlock()).id());
+        out.append(", family(red) ").append(nameOf(SccRegistry.sameFamily(level.getBlockState(pos).getBlock(), SccTier.RED_DWARF)));
+        // a basic chamber with a module in it, then up one tier at a time, the way the upgrade item does it
+        level.setBlockAndUpdate(pos, VillageRegistry.CHAMBERS.get(SccTier.BASIC).get().defaultBlockState());
+        if (level.getBlockEntity(pos) instanceof VillageChamberBlockEntity be) {
+            be.selfTest(VillageChamberBlockEntity.Module.TRADER, VillageChamberBlockEntity.newVillagerItem(level, VillagerProfession.NONE),
+                    BuiltInRegistries.BLOCK.get(ResourceLocation.parse("minecraft:composter")));
+        }
+        for (SccTier target : SccTier.values()) {
+            if (target == SccTier.BASIC) {
+                continue; // already basic: nothing to swap
+            }
+            Block next = SccRegistry.sameFamily(level.getBlockState(pos).getBlock(), target);
+            if (next == null) {
+                out.append(" | no block for ").append(target.id());
+                break;
+            }
+            boolean swapped = TierUpgrades.swap(level, pos, next);
+            SccTier now = SccRegistry.sharedTierOf(level.getBlockState(pos).getBlock());
+            boolean kept = level.getBlockEntity(pos) instanceof VillageChamberBlockEntity chamber
+                    && chamber.module() != VillageChamberBlockEntity.Module.NONE && chamber.villager() != null;
+            out.append(" | ").append(target.id()).append(swapped ? " ok" : " FAILED").append(", tier ").append(now.id())
+                    .append(", module kept ").append(kept);
+        }
+        // keeps and the stock: a basic chamber with a villager, a keep on its first trade, then store/swap
+        level.setBlockAndUpdate(pos, VillageRegistry.CHAMBERS.get(SccTier.BASIC).get().defaultBlockState());
+        if (level.getBlockEntity(pos) instanceof VillageChamberBlockEntity be) {
+            be.selfTest(VillageChamberBlockEntity.Module.TRADER, VillageChamberBlockEntity.newVillagerItem(level, VillagerProfession.NONE),
+                    BuiltInRegistries.BLOCK.get(ResourceLocation.parse("minecraft:composter")));
+            out.append(" | keep: offers ").append(be.offers().size()).append(", cap ").append(be.keepCap());
+            be.setKeep(0, 5, null);
+            for (int i = 0; i < 60; i++) {
+                be.serverTick();
+            }
+            out.append(", trades ").append(be.trades()).append(", waiting ").append(be.waiting().size());
+            be.storeCurrent(null);
+            out.append(", stored ").append(be.stored()).append("/").append(be.villagerCap());
+            be.useVillager("v0", null);
+            out.append(", module has villager ").append(be.villager() != null).append(", stored ").append(be.stored());
+        }
+        level.removeBlock(pos, false);
+        String text = out.toString();
+        System.out.println("VILLAGETEST " + text);
+        source.sendSuccess(() -> Component.literal(text), false);
+        return 1;
+    }
+
+    private static String nameOf(@org.jetbrains.annotations.Nullable Block block) {
+        return block == null ? "none" : String.valueOf(BuiltInRegistries.BLOCK.getKey(block));
     }
 
     static int run(CommandSourceStack source, String workstationId, boolean auto) {
@@ -86,12 +149,14 @@ final class VillageSelfTest {
         return 1;
     }
 
-    /** Dev hook: runs the self test at server start for a few workstations (set -Dsccadd.villagetest=true). */
+    /** Dev hook: runs the self test at server start for a few workstations (set -Dsccadd.villagetest=true or SCCADD_VILLAGETEST=true). */
     static void onStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
-        if (!Boolean.getBoolean("sccadd.villagetest")) {
+        boolean haltAfter = "true".equalsIgnoreCase(System.getenv("SCCADD_VILLAGETEST"));
+        if (!Boolean.getBoolean("sccadd.villagetest") && !haltAfter) {
             return;
         }
         var source = event.getServer().createCommandSourceStack().withPermission(4);
+        tierTest(source);
         {
             var level = event.getServer().overworld();
             var at = new net.minecraft.core.BlockPos(40, 120, 40);
@@ -105,5 +170,9 @@ final class VillageSelfTest {
             run(source, bench, false);
         }
         run(source, "barrel", true);
+        if (haltAfter) {
+            // the env var runs are one-shot: report, then get out of the way
+            event.getServer().halt(false);
+        }
     }
 }

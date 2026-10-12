@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "sccadd:block/village_chamber"
+    },
+    "facing=south": {
+      "model": "sccadd:block/village_chamber"
+    },
+    "facing=east": {
+      "model": "sccadd:block/village_chamber"
+    },
+    "facing=west": {
+      "model": "sccadd:block/village_chamber"
+    }
+  }
+}

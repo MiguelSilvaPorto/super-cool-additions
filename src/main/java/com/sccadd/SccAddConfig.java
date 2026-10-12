@@ -44,6 +44,8 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
     public static final ModConfigSpec.BooleanValue TERMINAL_CLEAN_VARIANTS;
     public static final ModConfigSpec.IntValue MAGNET_RANGE;
+    public static final ModConfigSpec.BooleanValue VILLAGE_ENERGY;
+    public static final ModConfigSpec.IntValue VILLAGE_ENERGY_COST;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -282,6 +284,20 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment("Village Chamber (Easy Villagers).").push("village");
+
+        VILLAGE_ENERGY = builder
+                .comment("The Singularity charges energy for what it does: 4,000 FE per kept trade and",
+                        "per new villager put in its stock. The other tiers are free. Turn off to make",
+                        "the Singularity free as well.")
+                .define("singularityEnergy", true);
+
+        VILLAGE_ENERGY_COST = builder
+                .comment("What the Singularity charges per trade and per new villager, in FE.")
+                .defineInRange("singularityCost", 4000, 0, 1_000_000_000);
+
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -419,5 +435,12 @@ public final class SccAddConfig {
 
     public static boolean resilientAnalysisCache() {
         return ANALYSIS_RESILIENT_CACHE.get();
+    }
+    public static boolean villageEnergy() {
+        return VILLAGE_ENERGY.get();
+    }
+
+    public static long villageEnergyCost() {
+        return VILLAGE_ENERGY_COST.get();
     }
 }

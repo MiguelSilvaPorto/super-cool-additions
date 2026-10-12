@@ -1,6 +1,7 @@
 package com.sccadd.village;
 
 import com.mojang.serialization.MapCodec;
+import de.scc.calculator.network.SccTier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -29,16 +30,27 @@ import org.jetbrains.annotations.Nullable;
 /**
  * The chamber: a glass box with a floor. An Easy Villagers Trader or Auto Trader goes inside (right-click
  * with it) and the box works as that module - see {@link VillageChamberBlockEntity}.
+ *
+ * <p>There is one chamber per SCC tier: the SCC upgrade items (and the Calculator Controller's network-wide
+ * upgrade) carry a chamber into the next one, see {@link VillageTiers}.</p>
  */
 public class VillageChamberBlock extends Block implements EntityBlock {
-    public static final MapCodec<VillageChamberBlock> CODEC = simpleCodec(VillageChamberBlock::new);
+    public static final MapCodec<VillageChamberBlock> CODEC = simpleCodec(properties -> new VillageChamberBlock(properties, SccTier.BASIC));
 
     /** The way the villager looks: toward whoever placed the box. */
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
 
-    public VillageChamberBlock(Properties properties) {
+    private final SccTier tier;
+
+    public VillageChamberBlock(Properties properties, SccTier tier) {
         super(properties);
+        this.tier = tier;
         this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
+    }
+
+    /** Which SCC tier this chamber is. */
+    public SccTier tier() {
+        return this.tier;
     }
 
     @Override

@@ -31,7 +31,8 @@
     "CraftJobCatalystSwapMixin",
     "ProcessorKeepCatalystMixin",
     "ProcessorReleaseCatalystMixin",
-    "ItemFilterMixin"
+    "ItemFilterMixin",
+    "SccRegistryTierMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",

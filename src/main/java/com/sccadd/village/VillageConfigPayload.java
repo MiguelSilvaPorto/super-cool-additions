@@ -25,6 +25,7 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
     public static final int XP_MODE = 9;
     public static final int USE_BENCH = 10;
     public static final int RENAME = 11;
+    public static final int KEEP = 12;
 
     public static final Type<VillageConfigPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SccAdditions.MODID, "village_config"));
     public static final StreamCodec<RegistryFriendlyByteBuf, VillageConfigPayload> CODEC = StreamCodec.composite(
@@ -64,6 +65,7 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
                 case TAKE_FROM_SYSTEM -> be.takeVillager(payload.text(), player);
                 case USE_BENCH -> be.useBench(payload.text(), player);
                 case RENAME -> be.rename(payload.text());
+                case KEEP -> be.setKeep(payload.value(), payload.extra(), player);
                 case XP_MODE -> be.setXpMode(VillageChamberBlockEntity.XpMode.values()[Math.floorMod(payload.value(), VillageChamberBlockEntity.XpMode.values().length)]);
                 default -> {
                 }

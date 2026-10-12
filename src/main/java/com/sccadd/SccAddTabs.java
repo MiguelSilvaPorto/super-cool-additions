@@ -43,8 +43,12 @@ public final class SccAddTabs {
     private static void fill(CreativeModeTab.ItemDisplayParameters parameters, CreativeModeTab.Output out) {
         // What the addon itself adds.
         out.accept(CompactInterface.ITEM.get());
-        if (ModList.get().isLoaded("easy_villagers") && VillageRegistry.CHAMBER_ITEM.isBound()) {
-            out.accept(VillageRegistry.CHAMBER_ITEM.get());
+        if (ModList.get().isLoaded("easy_villagers")) {
+            for (var item : VillageRegistry.CHAMBER_ITEMS.values()) {
+                if (item.isBound()) {
+                    out.accept(item.get());
+                }
+            }
         }
         // Breaking Calculator: the performance work (budget, batch mode, magnet reach) covers every grade.
         for (BreakingGrade grade : BreakingGrade.values()) {

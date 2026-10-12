@@ -1,5 +1,6 @@
 package com.sccadd.village;
 
+import com.sccadd.SccAddConfig;
 import de.maxhenkel.easyvillagers.blocks.ModBlocks;
 import de.maxhenkel.easyvillagers.blocks.tileentity.AutoTraderTileentity;
 import de.maxhenkel.easyvillagers.blocks.tileentity.TraderTileentity;
@@ -12,9 +13,12 @@ import de.maxhenkel.easyvillagers.items.VillagerItem;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.network.NetworkBlockEntity;
 import de.scc.calculator.network.NetworkView;
+import de.scc.calculator.network.SccTier;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -100,6 +104,17 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
     /** Diagnostics only: trades cost nothing and nothing is taken from a network. */
     private boolean freeTrades;
     private int trades;
+    /** The "keep this much in stock" targets, keyed by the item a trade sells (its StackKey code). */
+    private final Map<String, Integer> keeps = new LinkedHashMap<>();
+    /** Trades the tier's speed still owes this second. */
+    private double keepAllowance;
+    /** The villagers the block itself keeps, up to the tier's cap. */
+    private final List<Stored> stock = new ArrayList<>();
+    private int nextVillagerId;
+
+    /** A villager kept in the block. */
+    private record Stored(int id, ItemStack stack) {
+    }
 
     public VillageChamberBlockEntity(BlockPos pos, BlockState state) {
         super(VillageRegistry.CHAMBER_BE.get(), pos, state);
@@ -109,6 +124,236 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
 
     public Module module() {
         return this.module;
+    }
+
+    /** Which SCC tier this chamber is. Everything a tier changes starts here. */
+    public SccTier tier() {
+        return this.getBlockState().getBlock() instanceof VillageChamberBlock chamber ? chamber.tier() : SccTier.BASIC;
+    }
+
+    // ---- what the tier changes ----
+
+    /** How many villagers the block itself keeps. */
+    public int villagerCap() {
+        return switch (this.tier()) {
+            case BASIC -> 1;
+            case RED_DWARF -> 2;
+            case YELLOW_STAR -> 4;
+            case BLUE_GIANT -> 8;
+            case NEUTRON_STAR -> 16;
+            case SINGULARITY -> 32;
+        };
+    }
+
+    /** How many trades may be kept stocked at once. */
+    public int keepEntries() {
+        return switch (this.tier()) {
+            case BASIC -> 1;
+            case RED_DWARF -> 2;
+            case YELLOW_STAR -> 4;
+            case BLUE_GIANT -> 8;
+            case NEUTRON_STAR -> 16;
+            case SINGULARITY -> 32;
+        };
+    }
+
+    /** The most one trade may keep in stock. */
+    public int keepCap() {
+        return switch (this.tier()) {
+            case BASIC -> 1_000;
+            case RED_DWARF -> 10_000;
+            case YELLOW_STAR -> 25_000;
+            case BLUE_GIANT -> 50_000;
+            case NEUTRON_STAR -> 75_000;
+            case SINGULARITY -> 99_999;
+        };
+    }
+
+    /** How many trades a second the tier may do to keep the stock up. */
+    public int tradesPerSecond() {
+        return this.tier().parallelJobs;
+    }
+
+    /** What one kept trade costs in energy: the Singularity charges, the rest are free. */
+    public long tradeEnergy() {
+        return this.tier() == SccTier.SINGULARITY && SccAddConfig.villageEnergy() ? SccAddConfig.villageEnergyCost() : 0L;
+    }
+
+    /** What a new villager in the stock costs: the Singularity charges, the rest are free. */
+    public long villagerEnergy() {
+        return this.tier() == SccTier.SINGULARITY && SccAddConfig.villageEnergy() ? SccAddConfig.villageEnergyCost() : 0L;
+    }
+
+    // ---- keeping trades stocked ----
+
+    /** The keep target of each offer, in the offers' order: what the window shows and edits. */
+    public List<Integer> keepTargets(List<MerchantOffer> offers) {
+        List<Integer> out = new ArrayList<>(offers.size());
+        for (MerchantOffer offer : offers) {
+            Integer target = this.keeps.get(StackKey.of(offer.getResult()).encode());
+            out.add(target == null ? 0 : target);
+        }
+        return out;
+    }
+
+    /** Sets (0 clears) how much of one offer's result the network should always hold. */
+    public void setKeep(int offerIndex, int amount, @Nullable Player player) {
+        MerchantOffers offers = this.offers();
+        if (offerIndex < 0 || offerIndex >= offers.size()) {
+            return;
+        }
+        String code = StackKey.of(offers.get(offerIndex).getResult()).encode();
+        int wanted = Math.max(0, Math.min(this.keepCap(), amount));
+        if (wanted == 0) {
+            this.keeps.remove(code);
+        } else if (!this.keeps.containsKey(code) && this.keeps.size() >= this.keepEntries()) {
+            this.say(player, "This tier keeps " + this.keepEntries() + " trade(s) at once - upgrade for more.");
+            return;
+        } else {
+            this.keeps.put(code, wanted);
+        }
+        this.changed();
+    }
+
+    /** The kept trades run on their own at the tier's speed, paid from the network, up to the wanted stock. */
+    private void keepStock() {
+        if (this.keeps.isEmpty() || this.level == null) {
+            return;
+        }
+        TraderTileentityBase module = this.inner();
+        if (module == null || !module.hasVillager() || !module.hasWorkstation()) {
+            return;
+        }
+        MerchantOffers offers = this.offers();
+        if (offers.isEmpty()) {
+            return;
+        }
+        NetworkView view = this.freeTrades ? null : this.network();
+        if (!this.freeTrades && (view == null || !view.online())) {
+            return;
+        }
+        this.keepAllowance = Math.min(this.keepAllowance + this.tradesPerSecond() / 20.0, this.tradesPerSecond());
+        while (this.keepAllowance >= 1.0) {
+            if (!this.keepOne(offers, view)) {
+                this.keepAllowance = 0.0;
+                return;
+            }
+            this.keepAllowance -= 1.0;
+        }
+    }
+
+    /** One kept trade: paid from the network, the result where the output says. */
+    private boolean keepOne(MerchantOffers offers, @Nullable NetworkView view) {
+        for (Map.Entry<String, Integer> entry : this.keeps.entrySet()) {
+            StackKey key = StackKey.decode(entry.getKey());
+            if (key == null || key.item() == null) {
+                continue;
+            }
+            long have = view == null ? 0L : view.count(key);
+            if (have >= entry.getValue()) {
+                continue;
+            }
+            for (MerchantOffer offer : offers) {
+                if (offer.isOutOfStock() || !StackKey.of(offer.getResult()).equals(key)) {
+                    continue;
+                }
+                if (!this.freeTrades) {
+                    ItemStack a = offer.getCostA();
+                    ItemStack b = offer.getCostB();
+                    if (!has(view, a) || !has(view, b) || !this.drawTradeEnergy(view)) {
+                        continue;
+                    }
+                    if (!take(view, a) || !take(view, b)) {
+                        continue;
+                    }
+                }
+                offer.increaseUses();
+                EasyVillagerEntity villager = this.villager();
+                if (villager != null) {
+                    villager.setVillagerXp(villager.getVillagerXp() + offer.getXp());
+                    if (shouldLevelUp(villager)) {
+                        flagLevelUp(villager);
+                    }
+                }
+                this.trades++;
+                this.rewardXp(offer, view);
+                // kept trades always put the result in the network: that is the stock they keep up
+                ItemStack made = offer.getResult().copy();
+                ItemStack left = view == null ? made : view.insert(made, false);
+                if (!left.isEmpty() && (this.freeTrades || this.pending.size() < MAX_PENDING)) {
+                    this.pending.add(left);
+                }
+                TraderTileentityBase module = this.inner();
+                if (module != null) {
+                    module.saveVillagerEntity();
+                }
+                this.changed();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The tier's price for a kept trade; false when the network cannot pay it. */
+    private boolean drawTradeEnergy(@Nullable NetworkView view) {
+        long cost = this.tradeEnergy();
+        if (cost <= 0L) {
+            return true;
+        }
+        return view != null && view.drawEnergy(cost, false) >= cost;
+    }
+
+    /** The tier's price for a new villager in the stock; false when the network cannot pay it. */
+    private boolean payVillager(@Nullable NetworkView view, @Nullable Player player) {
+        long cost = this.villagerEnergy();
+        if (cost <= 0L || this.freeTrades) {
+            return true;
+        }
+        if (view == null || view.drawEnergy(cost, false) < cost) {
+            this.say(player, "This tier charges " + cost + " FE for a villager and the network cannot pay.");
+            return false;
+        }
+        return true;
+    }
+
+    // ---- the villagers the block keeps ----
+
+    /** How many villagers the block keeps right now. */
+    public int stored() {
+        return this.stock.size();
+    }
+
+    /** Puts a villager item in the block's stock, paying the tier's price; false when full or unpaid. */
+    private boolean stockVillager(ItemStack villager, @Nullable NetworkView view, @Nullable Player player) {
+        if (this.stock.size() >= this.villagerCap()) {
+            this.say(player, "This tier keeps " + this.villagerCap() + " villager(s) - upgrade for more.");
+            return false;
+        }
+        if (!this.payVillager(view, player)) {
+            return false;
+        }
+        this.stock.add(new Stored(this.nextVillagerId++, villager.copyWithCount(1)));
+        return true;
+    }
+
+    /** The kept villager a window code points at, or null when the code is not one of ours. */
+    @Nullable
+    private Stored find(String code) {
+        if (code == null || code.length() < 2 || code.charAt(0) != 'v') {
+            return null;
+        }
+        int id;
+        try {
+            id = Integer.parseInt(code.substring(1));
+        } catch (NumberFormatException notOurs) {
+            return null;
+        }
+        for (Stored stored : this.stock) {
+            if (stored.id() == id) {
+                return stored;
+            }
+        }
+        return null;
     }
 
     /** The Easy Villagers block entity inside, built on first use. */
@@ -503,6 +748,12 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         ItemStack bench = module != null && module.hasWorkstation() ? new ItemStack(module.getWorkstation()) : ItemStack.EMPTY;
         List<VillageView.Villager> villagers = new ArrayList<>();
         List<VillageView.Bench> benches = new ArrayList<>();
+        for (Stored stored : this.stock) {
+            VillageView.Villager card = this.describe("v" + stored.id(), stored.stack(), 1);
+            if (card != null) {
+                villagers.add(card);
+            }
+        }
         NetworkView view = this.freeTrades || this.level == null ? null : this.network();
         if (view != null && view.online()) {
             for (java.util.Map.Entry<StackKey, Long> entry : view.contents().entrySet()) {
@@ -518,14 +769,25 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
                 }
             }
         }
-        return new VillageView(this.module.ordinal(), villager != null, profession, level, xp, xpFrom, xpTo, top, name, bench, offers,
-                this.output.ordinal(), this.xpMode.ordinal(), this.state, villagers, benches);
+        return new VillageView(this.module.ordinal(), this.tier().ordinal(), villager != null, profession, level, xp, xpFrom, xpTo, top,
+                name, bench, offers, this.output.ordinal(), this.xpMode.ordinal(), this.state, villagers, benches,
+                this.keepTargets(offers), this.keepCap(), this.villagerCap(), this.stored(), this.tradesPerSecond(),
+                (int) Math.min(Integer.MAX_VALUE, this.tradeEnergy()), (int) Math.min(Integer.MAX_VALUE, this.villagerEnergy()));
     }
 
     /** What the window shows of a villager item in the system: its name, profession, level and the offers it already has. */
     @Nullable
     private VillageView.Villager card(NetworkView view, StackKey key, long count) {
         ItemStack stack = view.extract(key, 1, true);
+        if (stack.isEmpty()) {
+            return null;
+        }
+        return this.describe(key.encode(), stack, (int) Math.min(count, 9999L));
+    }
+
+    /** Reads a villager item into the card the window shows. */
+    @Nullable
+    private VillageView.Villager describe(String code, ItemStack stack, int count) {
         if (stack.isEmpty() || this.level == null) {
             return null;
         }
@@ -551,25 +813,22 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // show what we have
         }
-        return new VillageView.Villager(key.encode(), name, profession, level, (int) Math.min(count, 9999L), offers);
+        return new VillageView.Villager(code, name, profession, level, count, offers);
     }
 
     // ---- villagers and workstations in the system: swap them in quickly ----
 
-    /** The villager and workstation in the chamber go into the system; nothing is copied, they move. */
+    /** The villager goes into the block's own stock (up to the tier's cap); the workstation goes to the system. */
     public void storeCurrent(@Nullable Player player) {
         TraderTileentityBase module = this.inner();
-        NetworkView view = this.freeTrades ? null : this.network();
-        if (module == null || view == null || !view.online()) {
-            this.say(player, "Not on a running network.");
+        if (module == null) {
+            this.say(player, "Put an Easy Villagers Trader or Auto Trader in first.");
             return;
         }
+        NetworkView view = this.freeTrades ? null : this.network();
         if (module.hasVillager()) {
             module.saveVillagerEntity();
-            ItemStack villager = module.getVillager().copy();
-            ItemStack left = view.insert(villager, false);
-            if (!left.isEmpty()) {
-                this.say(player, "The system has no room for the villager.");
+            if (!this.stockVillager(module.getVillager(), view, player)) {
                 return;
             }
             module.removeVillager();
@@ -577,19 +836,61 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         if (module.hasWorkstation()) {
             Block block = module.removeWorkstation();
             if (block != null) {
-                ItemStack left = view.insert(new ItemStack(block), false);
-                if (!left.isEmpty()) {
-                    ItemHandlerHelper.giveItemToPlayer(player, left);
+                if (view != null && view.online()) {
+                    ItemStack left = view.insert(new ItemStack(block), false);
+                    if (!left.isEmpty()) {
+                        this.giveOrDrop(player, left);
+                    }
+                } else {
+                    this.giveOrDrop(player, new ItemStack(block));
                 }
             }
         }
         this.lastUses = -1;
-        this.say(player, "Villager and workstation stored in the system.");
+        this.say(player, "Villager kept in the chamber, workstation in the system.");
         this.changed();
     }
 
-    /** Puts a villager from the system in the chamber; the one that was there goes into the system in its place. */
+    /** To the player when there is one (the window), on the floor when there is not (the self test). */
+    private void giveOrDrop(@Nullable Player player, ItemStack stack) {
+        if (player != null) {
+            ItemHandlerHelper.giveItemToPlayer(player, stack);
+        } else if (this.level != null) {
+            Block.popResource(this.level, this.worldPosition, stack);
+        }
+    }
+
+    /** Puts a kept villager in the chamber; the one that was there takes its place in the stock. */
     public void useVillager(String code, @Nullable Player player) {
+        TraderTileentityBase module = this.inner();
+        if (module == null) {
+            return;
+        }
+        Stored picked = this.find(code);
+        if (picked == null) {
+            this.useFromSystem(code, player);
+            return;
+        }
+        NetworkView view = this.freeTrades ? null : this.network();
+        ItemStack incoming = picked.stack().copyWithCount(1);
+        this.stock.remove(picked);
+        if (module.hasVillager()) {
+            module.saveVillagerEntity();
+            if (!this.stockVillager(module.getVillager(), view, player)) {
+                this.stock.add(picked);
+                return;
+            }
+            module.removeVillager();
+        }
+        module.setVillager(incoming);
+        this.lastUses = -1;
+        this.say(player, "Villager swapped in.");
+        this.changed();
+        this.ensureOffers();
+    }
+
+    /** The system path: a villager of the network goes in; the one there goes to the stock first. */
+    private void useFromSystem(String code, @Nullable Player player) {
         TraderTileentityBase module = this.inner();
         NetworkView view = this.freeTrades ? null : this.network();
         StackKey key = StackKey.decode(code);
@@ -603,13 +904,19 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         }
         if (module.hasVillager()) {
             module.saveVillagerEntity();
-            ItemStack left = view.insert(module.getVillager().copy(), false);
-            if (!left.isEmpty()) {
-                view.insert(incoming, false);
-                this.say(player, "The system has no room for the villager in the chamber.");
-                return;
+            ItemStack back = module.getVillager().copy();
+            if (this.stock.size() < this.villagerCap() && this.payVillager(view, player)) {
+                this.stock.add(new Stored(this.nextVillagerId++, back.copyWithCount(1)));
+                module.removeVillager();
+            } else {
+                ItemStack left = view.insert(back, false);
+                if (!left.isEmpty()) {
+                    view.insert(incoming, false);
+                    this.say(player, "The system has no room for the villager in the chamber.");
+                    return;
+                }
+                module.removeVillager();
             }
-            module.removeVillager();
         }
         module.setVillager(incoming);
         this.lastUses = -1;
@@ -618,8 +925,15 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         this.ensureOffers();
     }
 
-    /** Gives a villager from the system to the player. */
+    /** Gives a kept villager to the player (or one of the system's). */
     public void takeVillager(String code, Player player) {
+        Stored stored = this.find(code);
+        if (stored != null) {
+            this.stock.remove(stored);
+            this.giveOrDrop(player, stored.stack().copy());
+            this.changed();
+            return;
+        }
         NetworkView view = this.freeTrades ? null : this.network();
         StackKey key = StackKey.decode(code);
         if (view == null || !view.online() || key == null) {
@@ -747,6 +1061,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             auto.tick();
             this.rewardAutoTrades();
         }
+        this.keepStock();
         if (this.level.getGameTime() % 20 == 7) {
             this.flushPending();
         }
@@ -873,6 +1188,23 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             list.add(stack.save(provider));
         }
         tag.put("sccadd_pending", list);
+        ListTag keeps = new ListTag();
+        for (Map.Entry<String, Integer> entry : this.keeps.entrySet()) {
+            CompoundTag one = new CompoundTag();
+            one.putString("trade", entry.getKey());
+            one.putInt("amount", entry.getValue());
+            keeps.add(one);
+        }
+        tag.put("sccadd_keeps", keeps);
+        ListTag stock = new ListTag();
+        for (Stored stored : this.stock) {
+            CompoundTag one = new CompoundTag();
+            one.putInt("id", stored.id());
+            one.put("villager", stored.stack().save(provider));
+            stock.add(one);
+        }
+        tag.put("sccadd_stock", stock);
+        tag.putInt("sccadd_next_villager", this.nextVillagerId);
     }
 
     @Override
@@ -919,5 +1251,25 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
                 this.pending.add(stack);
             }
         }
+        this.keeps.clear();
+        ListTag keeps = tag.getList("sccadd_keeps", Tag.TAG_COMPOUND);
+        for (int i = 0; i < keeps.size(); i++) {
+            CompoundTag one = keeps.getCompound(i);
+            String trade = one.getString("trade");
+            int amount = one.getInt("amount");
+            if (!trade.isEmpty() && amount > 0) {
+                this.keeps.put(trade, amount);
+            }
+        }
+        this.stock.clear();
+        ListTag stock = tag.getList("sccadd_stock", Tag.TAG_COMPOUND);
+        for (int i = 0; i < stock.size(); i++) {
+            CompoundTag one = stock.getCompound(i);
+            ItemStack villager = ItemStack.parseOptional(provider, one.getCompound("villager"));
+            if (!villager.isEmpty()) {
+                this.stock.add(new Stored(one.getInt("id"), villager.copyWithCount(1)));
+            }
+        }
+        this.nextVillagerId = Math.max(tag.getInt("sccadd_next_villager"), this.stock.size());
     }
 }

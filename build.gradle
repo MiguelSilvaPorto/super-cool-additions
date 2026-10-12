@@ -33,6 +33,11 @@ neoForge {
             server()
             gameDirectory = layout.projectDirectory.dir('run-server')
         }
+        // Same server, its own world, port and mods: lets a self test run while the normal test server is up.
+        serverVillage {
+            server()
+            gameDirectory = layout.projectDirectory.dir('run-village')
+        }
     }
 
     mods {

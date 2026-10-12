@@ -19,22 +19,28 @@
       ],
       "faces": {
         "down": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         },
         "up": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         },
         "north": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         },
         "south": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         },
         "east": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         },
         "west": {
-          "texture": "#floor"
+          "texture": "#floor",
+          "tintindex": 0
         }
       }
     },

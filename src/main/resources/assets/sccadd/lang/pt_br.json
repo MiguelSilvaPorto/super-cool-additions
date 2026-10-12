@@ -1,5 +1,13 @@
 {
   "block.sccadd.village_chamber": "Câmara de Vila",
+  "block.sccadd.village_chamber_red_dwarf": "Câmara de Vila (Anã Vermelha)",
+  "block.sccadd.village_chamber_yellow_star": "Câmara de Vila (Estrela Amarela)",
+  "block.sccadd.village_chamber_blue_giant": "Câmara de Vila (Gigante Azul)",
+  "block.sccadd.village_chamber_neutron_star": "Câmara de Vila (Estrela de Nêutrons)",
+  "block.sccadd.village_chamber_singularity": "Câmara de Vila (Singularidade)",
   "block.sccadd.interface_compact": "Interface Compacta",
-  "sccadd.tab": "SCC Additions"
+  "sccadd.tip.tier": "Nível: %s",
+  "sccadd.tip.upgrade": "Os itens de upgrade de nível do SCC sobem ela de nível",
+  "sccadd.tab": "SCC Additions",
+  "scc.power.source.ae2": "AE2"
 }
