@@ -19,6 +19,10 @@ public final class SccAddConfig {
     public static final ModConfigSpec.IntValue BREAKING_BUFFER_BASE;
     public static final ModConfigSpec.IntValue BREAKING_ACCUMULATE;
     public static final ModConfigSpec.IntValue REQUESTER_MAX_ORDER;
+    public static final ModConfigSpec.IntValue THINK_MS_PER_TICK;
+    public static final ModConfigSpec.IntValue THINK_MAX_TASKS;
+    public static final ModConfigSpec.IntValue THINK_MAX_RESTARTS;
+    public static final ModConfigSpec.IntValue ORDER_MAX_AMOUNT;
     public static final ModConfigSpec.BooleanValue BREAKING_PROFILE;
 
     public static final ModConfigSpec.BooleanValue AE2_PATTERNS_IN_SCC;
@@ -208,6 +212,28 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment("Order dialog and the Think button.").push("think");
+
+        ORDER_MAX_AMOUNT = builder
+                .comment("The largest amount the order dialog accepts (SCC: 9999).")
+                .defineInRange("maxOrderAmount", 1_000_000, 1, 1_000_000_000);
+
+        THINK_MS_PER_TICK = builder
+                .comment("Milliseconds of client time per tick spent on a plan the Think button is working on.",
+                        "More = finishes sooner, less = smoother game. 20 ticks per second.")
+                .defineInRange("msPerTick", 6, 1, 40);
+
+        THINK_MAX_TASKS = builder
+                .comment("How many plans can be thinking or waiting at once.")
+                .defineInRange("maxTasks", 6, 1, 24);
+
+        THINK_MAX_RESTARTS = builder
+                .comment("SCC plans one thing at a time and interrupts a plan when you open another.",
+                        "An interrupted Think plan starts again; after this many restarts it gives up.")
+                .defineInRange("maxRestarts", 40, 0, 1000);
+
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -232,6 +258,22 @@ public final class SccAddConfig {
 
     public static boolean batchBreaking() {
         return BREAKING_BATCH.get();
+    }
+
+    public static int thinkMsPerTick() {
+        return THINK_MS_PER_TICK.get();
+    }
+
+    public static int thinkMaxTasks() {
+        return THINK_MAX_TASKS.get();
+    }
+
+    public static int thinkMaxRestarts() {
+        return THINK_MAX_RESTARTS.get();
+    }
+
+    public static int orderMaxAmount() {
+        return ORDER_MAX_AMOUNT.get();
     }
 
     public static int requesterMaxOrder() {
