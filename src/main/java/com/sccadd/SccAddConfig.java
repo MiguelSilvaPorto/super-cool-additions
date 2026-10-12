@@ -20,6 +20,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue SCC_PATTERNS_IN_AE2;
     public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
     public static final ModConfigSpec.BooleanValue AE2_BRIDGE_ON_RECEIVER;
+    public static final ModConfigSpec.BooleanValue AE2_FLUIDS;
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
@@ -93,6 +94,13 @@ public final class SccAddConfig {
                         "Put the receiver next to the AE2 network: it mounts the SCC network as ME storage",
                         "and offers the SCC recipes as real patterns - no antenna needed.")
                 .define("bridgeOnReceiver", true);
+
+        AE2_FLUIDS = builder
+                .comment("Bridge fluids between AE2 and SCC, both directions (items already work).",
+                        "SCC fluids appear in the ME network; ME fluids appear in the SCC network.",
+                        "A Storage Connector on an AE2 block uses the ME fluids; the receiver bridge",
+                        "mounts the SCC fluids.")
+                .define("fluids", true);
 
         builder.pop();
 
@@ -169,6 +177,10 @@ public final class SccAddConfig {
 
     public static boolean bridgeOnReceiver() {
         return AE2_BRIDGE_ON_RECEIVER.get();
+    }
+
+    public static boolean ae2Fluids() {
+        return AE2_FLUIDS.get();
     }
 
     public static boolean smartPlanner() {

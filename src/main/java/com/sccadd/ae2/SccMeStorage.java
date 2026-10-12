@@ -2,6 +2,7 @@ package com.sccadd.ae2;
 
 import appeng.api.config.Actionable;
 import appeng.api.networking.security.IActionSource;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
@@ -13,6 +14,8 @@ import de.scc.calculator.network.NetworkView;
 import java.util.Map;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.material.Fluid;
+import net.neoforged.neoforge.fluids.FluidStack;
 
 /**
  * The SCC network seen as AE2 storage: what an ME terminal or a Storage Bus
@@ -51,6 +54,16 @@ public final class SccMeStorage implements MEStorage {
                     out.add(key, amount);
                 }
             }
+            for (Map.Entry<Fluid, Long> entry : view.fluidContents().entrySet()) {
+                Long amount = entry.getValue();
+                if (amount == null || amount <= 0L || entry.getKey() == null) {
+                    continue;
+                }
+                AEFluidKey key = AEFluidKey.of(new FluidStack(entry.getKey(), 1));
+                if (key != null) {
+                    out.add(key, amount);
+                }
+            }
         } catch (Throwable failed) {
             // never let a storage query break the grid
         } finally {
@@ -60,11 +73,26 @@ public final class SccMeStorage implements MEStorage {
 
     @Override
     public long insert(AEKey what, long amount, Actionable mode, IActionSource source) {
-        if (BridgeGuard.busy() || !(what instanceof AEItemKey item) || amount <= 0L) {
+        if (BridgeGuard.busy() || amount <= 0L) {
             return 0L;
         }
         NetworkView view = this.be.network();
         if (view == null) {
+            return 0L;
+        }
+        if (what instanceof AEFluidKey fluidKey) {
+            FluidStack stack = fluidKey.toStack((int) Math.min(Integer.MAX_VALUE, amount));
+            BridgeGuard.enter();
+            try {
+                FluidStack rest = view.insertFluid(stack, mode == Actionable.SIMULATE);
+                return stack.getAmount() - rest.getAmount();
+            } catch (Throwable failed) {
+                return 0L;
+            } finally {
+                BridgeGuard.leave();
+            }
+        }
+        if (!(what instanceof AEItemKey item)) {
             return 0L;
         }
         BridgeGuard.enter();
@@ -90,11 +118,25 @@ public final class SccMeStorage implements MEStorage {
 
     @Override
     public long extract(AEKey what, long amount, Actionable mode, IActionSource source) {
-        if (BridgeGuard.busy() || !(what instanceof AEItemKey item) || amount <= 0L) {
+        if (BridgeGuard.busy() || amount <= 0L) {
             return 0L;
         }
         NetworkView view = this.be.network();
         if (view == null) {
+            return 0L;
+        }
+        if (what instanceof AEFluidKey fluidKey) {
+            BridgeGuard.enter();
+            try {
+                return view.drainFluid(fluidKey.getFluid(), (int) Math.min(Integer.MAX_VALUE, amount),
+                        mode == Actionable.SIMULATE);
+            } catch (Throwable failed) {
+                return 0L;
+            } finally {
+                BridgeGuard.leave();
+            }
+        }
+        if (!(what instanceof AEItemKey item)) {
             return 0L;
         }
         StackKey key = StackKey.of(item.toStack(1));
