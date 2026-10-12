@@ -32,6 +32,8 @@
     "client.TerminalBarEntryAccess",
     "client.TerminalBarLayoutMixin",
     "client.TerminalBarAccess",
+    "client.ContainerScreenAccess",
+    "client.TerminalWirelessInvoker",
     "client.TerminalScreenBarEditMixin",
     "client.TerminalListVariantMixin",
     "client.ItemBatchGhostMixin",

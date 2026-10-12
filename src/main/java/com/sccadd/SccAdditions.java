@@ -1,6 +1,7 @@
 package com.sccadd;
 
 import com.sccadd.net.SccPatternsPayload;
+import com.sccadd.slots.SlotRulesPayload;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
@@ -32,5 +33,6 @@ public final class SccAdditions {
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(SccPatternsPayload.TYPE, SccPatternsPayload.CODEC, SccPatternsPayload::handle);
+        registrar.playToServer(SlotRulesPayload.TYPE, SlotRulesPayload.CODEC, SlotRulesPayload::handle);
     }
 }
