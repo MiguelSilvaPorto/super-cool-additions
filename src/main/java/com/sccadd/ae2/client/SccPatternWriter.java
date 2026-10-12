@@ -14,10 +14,16 @@ import de.scc.calculator.network.CraftStep;
  * decode, so old servers stay compatible.
  */
 public final class SccPatternWriter {
-    public static final int MAX_PATTERNS = 4_000;
-    public static final int MAX_CHARS = 1_500_000;
-    public static final int MAX_INPUTS = 12;
-    public static final int MAX_OPTIONS = 12;
+    /**
+     * No arbitrary cap: whatever SCC's own offer list says it can build is sent
+     * with a real recipe. SCC already caps its offer (8000 items); the wire codec
+     * handles up to 16 MB with automatic compression, so these numbers are just
+     * an emergency stop far above any real pack.
+     */
+    public static final int MAX_PATTERNS = 20_000;
+    public static final int MAX_CHARS = 12_000_000;
+    public static final int MAX_INPUTS = 27;
+    public static final int MAX_OPTIONS = 128;
 
     private SccPatternWriter() {
     }
