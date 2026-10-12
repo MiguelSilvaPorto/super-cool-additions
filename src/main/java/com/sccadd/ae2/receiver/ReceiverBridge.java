@@ -177,7 +177,10 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
                 this.askedAt = now;
                 SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
                         + ": asking what SCC can build (linked=" + this.be.linked()
-                        + ", transmitter=" + (this.be.transmitter() != null) + ")");
+                        + ", transmitter=" + (this.be.transmitter() != null)
+                        + ", storages=" + view.storages().size()
+                        + ", terminals=" + view.terminals().size()
+                        + ", contents=" + view.contents().size() + ")");
             }
         }
         this.service(server, node.getGrid(), crafting, view);
