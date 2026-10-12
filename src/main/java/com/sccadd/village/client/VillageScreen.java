@@ -3,55 +3,64 @@ package com.sccadd.village.client;
 import com.sccadd.village.VillageChamberBlockEntity;
 import com.sccadd.village.VillageConfigPayload;
 import com.sccadd.village.VillageMenu;
-import de.maxhenkel.easyvillagers.datacomponents.VillagerData;
+import com.sccadd.village.VillageView;
 import de.maxhenkel.easyvillagers.entity.EasyVillagerEntity;
 import de.scc.calculator.client.screen.SccContainerScreen;
 import de.scc.calculator.client.screen.SccGui;
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
+import de.scc.calculator.client.screen.SccTextInput;
 import java.util.List;
-import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
-import net.minecraft.world.item.trading.MerchantOffers;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The chamber's window, in SCC's style and laid out like Easy Villagers': the villager in 3D on the
- * left with its workstation and four buttons (the fourth, Cycle, opens the saved villagers), the offers
- * on the right with a button to trade each one, paid from the network, and where results and
- * experience go along the bottom.
+ * The chamber's window, in SCC's style and laid out like Easy Villagers': the villager in 3D on the left
+ * with its name, workstation and four buttons (the fourth, Cycle, opens the villagers and workstations
+ * waiting in the system), the offers on the right with a button to trade each one, paid from the network,
+ * and where results and experience go along the bottom.
+ *
+ * <p>Everything it shows comes from the {@link VillageView} the server sends; the only thing built here is
+ * the 3D villager.</p>
  */
-public final class VillageScreen extends SccContainerScreen<VillageMenu> {
+public final class VillageScreen extends SccContainerScreen<VillageMenu> implements SccTextInput {
     private static final int ROW_H = 24;
     private static final int ROWS = 6;
     private static final int LEFT_W = 98;
-    private static final int POP_ROW = 38;
-    private static final int POP_ROWS = 4;
+    private static final int CARD_H = 50;
+    private static final int CARDS = 3;
+    private static final int BENCHES = 12;
 
+    private VillageView view = VillageView.EMPTY;
     private int scroll;
     private boolean cycleOpen;
-    private int popScroll;
-    private int idleTicks;
-    private final Map<VillageChamberBlockEntity.Setup, Card> cards = new IdentityHashMap<>();
-
-    /** What the Cycle window shows of a saved villager. */
-    private record Card(String profession, int level, List<ItemStack> results) {
-    }
+    private int cardScroll;
+    private int benchScroll;
+    private int refreshIn;
+    private boolean naming;
+    private String typed = "";
 
     public VillageScreen(VillageMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.imageWidth = 304;
-        this.imageHeight = 244;
+        this.imageHeight = 248;
+    }
+
+    public BlockPos chamber() {
+        return this.menu.pos();
+    }
+
+    public void setView(VillageView view) {
+        this.view = view;
+        this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, view.offers().size() - ROWS)));
+        this.cardScroll = Math.max(0, Math.min(this.cardScroll, Math.max(0, view.villagers().size() - CARDS)));
     }
 
     @Override
@@ -59,32 +68,37 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
         return false;
     }
 
-    @Nullable
-    private VillageChamberBlockEntity be() {
-        return Minecraft.getInstance().level != null
-                && Minecraft.getInstance().level.getBlockEntity(this.menu.pos()) instanceof VillageChamberBlockEntity be ? be : null;
+    @Override
+    public boolean sccTyping() {
+        return this.naming;
     }
 
-    private void send(int action, int value, int extra) {
-        PacketDistributor.sendToServer(new VillageConfigPayload(this.menu.pos(), action, value, extra));
+    private void send(int action, int value, int extra, String text) {
+        PacketDistributor.sendToServer(new VillageConfigPayload(this.menu.pos(), action, value, extra, text));
+    }
+
+    @Nullable
+    private EasyVillagerEntity entity() {
+        return Minecraft.getInstance().level != null
+                && Minecraft.getInstance().level.getBlockEntity(this.menu.pos()) instanceof VillageChamberBlockEntity be ? be.villager() : null;
     }
 
     // ---- layout ----
 
-    private int villagerX() {
+    private int vx() {
         return this.leftPos + 8;
     }
 
-    private int villagerY() {
+    private int vy() {
         return this.topPos + 20;
     }
 
     private int benchY() {
-        return this.topPos + 138;
+        return this.topPos + 140;
     }
 
     private int buttonY(int index) {
-        return this.topPos + 164 + index * 19;
+        return this.topPos + 168 + index * 19;
     }
 
     private int listX() {
@@ -100,19 +114,27 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
     }
 
     private int popX() {
-        return this.leftPos + 24;
+        return this.leftPos + 16;
     }
 
     private int popY() {
-        return this.topPos + 26;
+        return this.topPos + 20;
     }
 
     private int popW() {
-        return this.imageWidth - 48;
+        return this.imageWidth - 32;
     }
 
     private int popH() {
-        return 34 + POP_ROWS * POP_ROW + 8;
+        return this.imageHeight - 40;
+    }
+
+    private int cardsY() {
+        return this.popY() + 36;
+    }
+
+    private int stripY() {
+        return this.cardsY() + CARDS * CARD_H + 16;
     }
 
     private static boolean in(double mx, double my, int x, int y, int w, int h) {
@@ -124,12 +146,9 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
     @Override
     protected void containerTick() {
         super.containerTick();
-        VillageChamberBlockEntity be = this.be();
-        // a villager with a bench but no offers on this side: ask the server to make and send them
-        if (be != null && be.villager() != null && be.offers().isEmpty() && !"none".equals(be.workstationName())
-                && ++this.idleTicks >= 20) {
-            this.idleTicks = 0;
-            this.send(VillageConfigPayload.REFRESH, 0, 0);
+        if (--this.refreshIn <= 0) {
+            this.refreshIn = 20;
+            this.send(VillageConfigPayload.REFRESH, 0, 0, "");
         }
     }
 
@@ -137,100 +156,150 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
 
     @Override
     protected boolean sccMouseClicked(double mx, double my, int button) {
-        VillageChamberBlockEntity be = this.be();
-        if (be == null || button != 0) {
+        if (button != 0) {
             return super.sccMouseClicked(mx, my, button);
         }
         if (this.cycleOpen) {
-            return this.clickCycle(be, mx, my);
+            return this.clickCycle(mx, my);
         }
-        MerchantOffers offers = be.offers();
+        if (this.naming && !in(mx, my, this.vx(), this.vy() + 84, LEFT_W, 12)) {
+            this.commitName();
+        }
         for (int row = 0; row < ROWS; row++) {
             int index = this.scroll + row;
-            if (index >= offers.size()) {
+            if (index >= this.view.offers().size()) {
                 break;
             }
             int y = this.listY() + row * ROW_H;
             if (in(mx, my, this.listX() + 124, y + 2, 48, ROW_H - 6)) {
-                this.send(VillageConfigPayload.TRADE, index, Screen.hasControlDown() ? 64 : Screen.hasShiftDown() ? 10 : 1);
+                this.send(VillageConfigPayload.TRADE, index, Screen.hasControlDown() ? 64 : Screen.hasShiftDown() ? 10 : 1, "");
                 return true;
             }
         }
-        int x = this.villagerX();
+        int x = this.vx();
+        if (this.view.hasVillager() && in(mx, my, x, this.vy() + 84, LEFT_W, 12)) {
+            this.naming = true;
+            this.typed = this.view.name();
+            return true;
+        }
         if (in(mx, my, x, this.buttonY(0), LEFT_W, 16)) {
-            this.send(VillageConfigPayload.TAKE_VILLAGER, 0, 0);
+            this.send(VillageConfigPayload.TAKE_VILLAGER, 0, 0, "");
             return true;
         }
         if (in(mx, my, x, this.buttonY(1), LEFT_W, 16)) {
-            this.send(VillageConfigPayload.TAKE_WORKSTATION, 0, 0);
+            this.send(VillageConfigPayload.TAKE_WORKSTATION, 0, 0, "");
             return true;
         }
         if (in(mx, my, x, this.buttonY(2), LEFT_W, 16)) {
-            this.send(VillageConfigPayload.REMOVE_MODULE, 0, 0);
+            this.send(VillageConfigPayload.REMOVE_MODULE, 0, 0, "");
             return true;
         }
         if (in(mx, my, x, this.buttonY(3), LEFT_W, 16)) {
             this.cycleOpen = true;
-            this.popScroll = 0;
+            this.cardScroll = 0;
+            this.refreshIn = 0;
             return true;
         }
         int by = this.bottomY();
         if (in(mx, my, this.listX(), by + 4, 180, 16)) {
-            this.send(VillageConfigPayload.OUTPUT, be.output().ordinal() + 1, 0);
+            this.send(VillageConfigPayload.OUTPUT, this.view.output() + 1, 0, "");
             return true;
         }
         if (in(mx, my, this.listX(), by + 22, 180, 16)) {
-            this.send(VillageConfigPayload.XP_MODE, be.xpMode().ordinal() + 1, 0);
+            this.send(VillageConfigPayload.XP_MODE, this.view.xpMode() + 1, 0, "");
             return true;
         }
         return super.sccMouseClicked(mx, my, button);
     }
 
-    private boolean clickCycle(VillageChamberBlockEntity be, double mx, double my) {
+    private boolean clickCycle(double mx, double my) {
         int px = this.popX();
         int py = this.popY();
-        if (!in(mx, my, px, py, this.popW(), this.popH())) {
+        int pw = this.popW();
+        if (!in(mx, my, px, py, pw, this.popH())) {
             this.cycleOpen = false;
             return true;
         }
-        if (in(mx, my, px + this.popW() - 92, py + 15, 86, 16)) {
-            this.send(VillageConfigPayload.SAVE_SETUP, 0, 0);
+        if (in(mx, my, px + pw - 128, py + 18, 120, 16)) {
+            this.send(VillageConfigPayload.STORE_CURRENT, 0, 0, "");
             return true;
         }
-        List<VillageChamberBlockEntity.Setup> setups = be.setups();
-        for (int row = 0; row < POP_ROWS; row++) {
-            int index = this.popScroll + row;
-            if (index >= setups.size()) {
+        List<VillageView.Villager> villagers = this.view.villagers();
+        for (int row = 0; row < CARDS; row++) {
+            int index = this.cardScroll + row;
+            if (index >= villagers.size()) {
                 break;
             }
-            int y = py + 30 + row * POP_ROW;
-            if (in(mx, my, px + this.popW() - 92, y + 6, 46, 16)) {
-                this.send(VillageConfigPayload.USE_SETUP, index, 0);
+            int y = this.cardsY() + row * CARD_H;
+            VillageView.Villager card = villagers.get(index);
+            if (in(mx, my, px + pw - 92, y + 6, 40, 16)) {
+                this.send(VillageConfigPayload.USE_VILLAGER, 0, 0, card.code());
                 return true;
             }
-            if (in(mx, my, px + this.popW() - 42, y + 6, 34, 16)) {
-                this.send(VillageConfigPayload.DELETE_SETUP, index, 0);
+            if (in(mx, my, px + pw - 48, y + 6, 40, 16)) {
+                this.send(VillageConfigPayload.TAKE_FROM_SYSTEM, 0, 0, card.code());
+                return true;
+            }
+        }
+        List<VillageView.Bench> benches = this.view.benches();
+        for (int i = 0; i < BENCHES; i++) {
+            int index = this.benchScroll + i;
+            if (index >= benches.size()) {
+                break;
+            }
+            if (in(mx, my, px + 8 + i * 18, this.stripY() + 12, 18, 18)) {
+                this.send(VillageConfigPayload.USE_BENCH, 0, 0, benches.get(index).code());
                 return true;
             }
         }
         return true;
+    }
+
+    private void commitName() {
+        if (this.naming) {
+            this.send(VillageConfigPayload.RENAME, 0, 0, this.typed);
+        }
+        this.naming = false;
     }
 
     @Override
     protected boolean sccMouseScrolled(double mx, double my, double dx, double dy) {
-        VillageChamberBlockEntity be = this.be();
+        int step = -(int) Math.signum(dy);
         if (this.cycleOpen) {
-            int size = be == null ? 0 : be.setups().size();
-            this.popScroll = Math.max(0, Math.min(Math.max(0, size - POP_ROWS), this.popScroll - (int) Math.signum(dy)));
+            if (my >= this.stripY()) {
+                this.benchScroll = Math.max(0, Math.min(Math.max(0, this.view.benches().size() - BENCHES), this.benchScroll + step));
+            } else {
+                this.cardScroll = Math.max(0, Math.min(Math.max(0, this.view.villagers().size() - CARDS), this.cardScroll + step));
+            }
             return true;
         }
-        int size = be == null ? 0 : be.offers().size();
-        this.scroll = Math.max(0, Math.min(Math.max(0, size - ROWS), this.scroll - (int) Math.signum(dy)));
+        this.scroll = Math.max(0, Math.min(Math.max(0, this.view.offers().size() - ROWS), this.scroll + step));
         return true;
     }
 
     @Override
+    public boolean charTyped(char ch, int modifiers) {
+        if (this.naming && ch >= ' ' && this.typed.length() < 40) {
+            this.typed += ch;
+            return true;
+        }
+        return super.charTyped(ch, modifiers);
+    }
+
+    @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
+        if (this.naming) {
+            if (key == 257 || key == 335) {
+                this.commitName();
+            } else if (key == 259) {
+                if (!this.typed.isEmpty()) {
+                    this.typed = this.typed.substring(0, this.typed.length() - 1);
+                }
+            } else if (key == 256) {
+                this.naming = false;
+            }
+            return true;
+        }
         if (key == 256 && this.cycleOpen) {
             this.cycleOpen = false;
             return true;
@@ -249,89 +318,87 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
     @Override
     protected void sccRender(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.sccRender(g, mouseX, mouseY, partialTick);
-        VillageChamberBlockEntity be = this.be();
-        String kind = be == null ? "" : switch (be.module()) {
-            case TRADER -> "Trader";
-            case AUTO -> "Auto Trader";
+        String kind = switch (this.view.module()) {
+            case 1 -> "Trader";
+            case 2 -> "Auto Trader";
             default -> "";
         };
         g.drawString(this.font, "Village Chamber" + (kind.isEmpty() ? "" : "  ·  " + kind), this.leftPos + 8, this.topPos + 4, SccGui.ACCENT, false);
-        if (be == null) {
-            return;
-        }
-        boolean under = this.cycleOpen;
-        this.drawVillager(g, be, under ? -1 : mouseX, under ? -1 : mouseY);
-        this.drawOffers(g, be, under ? -1 : mouseX, under ? -1 : mouseY);
-        this.drawBottom(g, be, under ? -1 : mouseX, under ? -1 : mouseY);
+        int mx = this.cycleOpen ? -1 : mouseX;
+        int my = this.cycleOpen ? -1 : mouseY;
+        this.drawVillager(g, mx, my);
+        this.drawOffers(g, mx, my);
+        this.drawBottom(g, mx, my);
         if (this.cycleOpen) {
-            this.drawCycle(g, be, mouseX, mouseY);
+            this.drawCycle(g, mouseX, mouseY);
         }
     }
 
-    private void drawVillager(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
-        int x = this.villagerX();
-        int y = this.villagerY();
-        g.fill(x, y, x + LEFT_W, y + 114, SccGui.PLATE_BG);
-        SccGui.outline(g, x, y, LEFT_W, 114, SccGui.BORDER);
-        EasyVillagerEntity villager = be.villager();
-        if (villager == null) {
+    private void drawVillager(GuiGraphics g, int mouseX, int mouseY) {
+        int x = this.vx();
+        int y = this.vy();
+        g.fill(x, y, x + LEFT_W, y + 116, SccGui.PLATE_BG);
+        SccGui.outline(g, x, y, LEFT_W, 116, SccGui.BORDER);
+        VillageView view = this.view;
+        if (!view.hasVillager()) {
             g.drawString(this.font, "No villager inside", x + 8, y + 50, SccGui.MUTED, false);
             g.drawString(this.font, "Use a villager item", x + 8, y + 62, SccGui.MUTED, false);
             g.drawString(this.font, "on the block.", x + 8, y + 72, SccGui.MUTED, false);
         } else {
-            InventoryScreen.renderEntityInInventoryFollowsMouse(g, x + 1, y + 1, x + LEFT_W - 1, y + 84, 36, 0.0625F,
-                    mouseX < 0 ? x + LEFT_W / 2.0F : mouseX, mouseY < 0 ? y + 40 : mouseY, villager);
-            net.minecraft.world.entity.npc.VillagerData data = villager.getVillagerData();
-            String profession = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).getPath().replace('_', ' ');
-            g.drawString(this.font, this.font.plainSubstrByWidth(profession + "  lvl " + data.getLevel(), LEFT_W - 6), x + 4, y + 88, SccGui.TEXT, false);
-            int level = data.getLevel();
-            boolean max = !net.minecraft.world.entity.npc.VillagerData.canLevelUp(level);
-            int from = net.minecraft.world.entity.npc.VillagerData.getMinXpPerLevel(level);
-            int to = net.minecraft.world.entity.npc.VillagerData.getMaxXpPerLevel(level);
-            float fill = max ? 1.0F : Math.max(0.0F, Math.min(1.0F, (villager.getVillagerXp() - from) / (float) Math.max(1, to - from)));
-            g.fill(x + 4, y + 100, x + LEFT_W - 4, y + 106, 0xFF10161C);
-            g.fill(x + 4, y + 100, x + 4 + (int) ((LEFT_W - 8) * fill), y + 106, SccGui.GOOD);
-            if (mouseX >= x + 4 && mouseX < x + LEFT_W - 4 && mouseY >= y + 98 && mouseY < y + 108) {
-                SccGui.tooltip(g, this.font, Component.literal(max ? "Top level" : "Experience " + villager.getVillagerXp() + " / " + to), mouseX, mouseY);
+            EasyVillagerEntity entity = this.entity();
+            if (entity != null && !this.cycleOpen) {
+                InventoryScreen.renderEntityInInventoryFollowsMouse(g, x + 1, y + 1, x + LEFT_W - 1, y + 82, 36, 0.0625F,
+                        mouseX < 0 ? x + LEFT_W / 2.0F : mouseX, mouseY < 0 ? y + 40 : mouseY, entity);
+            }
+            // the name: click it to rename
+            boolean hover = in(mouseX, mouseY, x, y + 84, LEFT_W, 12);
+            g.fill(x + 2, y + 84, x + LEFT_W - 2, y + 96, this.naming ? 0xFF10161C : (hover ? SccGui.ROW_HOVER : SccGui.PLATE_BG));
+            if (this.naming) {
+                SccGui.outline(g, x + 2, y + 84, LEFT_W - 4, 12, SccGui.ACCENT);
+            }
+            String shown = this.naming ? this.typed + ((System.currentTimeMillis() / 500) % 2 == 0 ? "_" : "")
+                    : (view.name().isEmpty() ? view.profession() : view.name());
+            g.drawString(this.font, this.font.plainSubstrByWidth(shown, LEFT_W - 8), x + 4, y + 86, SccGui.TEXT, false);
+            if (hover && !this.naming) {
+                SccGui.tooltip(g, this.font, Component.literal("Click to rename"), mouseX, mouseY);
+            }
+            g.drawString(this.font, this.font.plainSubstrByWidth(view.profession() + "  lvl " + view.level(), LEFT_W - 8), x + 4, y + 98, SccGui.MUTED, false);
+            float fill = view.topLevel() ? 1.0F
+                    : Math.max(0.0F, Math.min(1.0F, (view.xp() - view.xpFrom()) / (float) Math.max(1, view.xpTo() - view.xpFrom())));
+            g.fill(x + 4, y + 108, x + LEFT_W - 4, y + 112, 0xFF10161C);
+            g.fill(x + 4, y + 108, x + 4 + (int) ((LEFT_W - 8) * fill), y + 112, SccGui.GOOD);
+            if (in(mouseX, mouseY, x + 4, y + 106, LEFT_W - 8, 8)) {
+                SccGui.tooltip(g, this.font, Component.literal(view.topLevel() ? "Top level" : "Experience " + view.xp() + " / " + view.xpTo()), mouseX, mouseY);
             }
         }
         // the workstation, as the block it is
         int by = this.benchY();
         g.fill(x, by, x + LEFT_W, by + 22, SccGui.PLATE_BG);
         SccGui.outline(g, x, by, LEFT_W, 22, SccGui.BORDER);
-        String bench = be.workstationName();
-        ItemStack benchStack = benchStack(be);
-        if (!benchStack.isEmpty()) {
-            g.renderItem(benchStack, x + 3, by + 3);
+        if (!view.bench().isEmpty()) {
+            g.renderItem(view.bench(), x + 3, by + 3);
+            g.drawString(this.font, this.font.plainSubstrByWidth(view.bench().getHoverName().getString(), LEFT_W - 28), x + 24, by + 7, SccGui.TEXT, false);
+        } else {
+            g.drawString(this.font, "No workstation", x + 6, by + 7, SccGui.WARN, false);
         }
-        g.drawString(this.font, this.font.plainSubstrByWidth("none".equals(bench) ? "No workstation" : bench, LEFT_W - 28), x + 24, by + 7,
-                "none".equals(bench) ? SccGui.WARN : SccGui.TEXT, false);
         this.button(g, x, this.buttonY(0), LEFT_W, "Take villager out", mouseX, mouseY);
         this.button(g, x, this.buttonY(1), LEFT_W, "Take bench out", mouseX, mouseY);
         this.button(g, x, this.buttonY(2), LEFT_W, "Remove module", mouseX, mouseY);
-        this.button(g, x, this.buttonY(3), LEFT_W, "Cycle  (" + be.setups().size() + ")", mouseX, mouseY);
+        this.button(g, x, this.buttonY(3), LEFT_W, "Cycle  (" + view.villagers().size() + ")", mouseX, mouseY);
         if (in(mouseX, mouseY, x, this.buttonY(3), LEFT_W, 16)) {
-            SccGui.tooltip(g, this.font, List.of(Component.literal("Saved villagers and their workstations."),
-                    Component.literal("Swap to another one in a click.")), mouseX, mouseY);
+            SccGui.tooltip(g, this.font, List.of(Component.literal("The villagers and workstations waiting in the system."),
+                    Component.literal("Swap to another in a click.")), mouseX, mouseY);
         }
     }
 
-    private static ItemStack benchStack(VillageChamberBlockEntity be) {
-        var module = be.inner();
-        if (module == null || !module.hasWorkstation()) {
-            return ItemStack.EMPTY;
-        }
-        return new ItemStack(module.getWorkstation());
-    }
-
-    private void drawOffers(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
-        MerchantOffers offers = be.offers();
+    private void drawOffers(GuiGraphics g, int mouseX, int mouseY) {
+        List<MerchantOffer> offers = this.view.offers();
         g.drawString(this.font, "Trades", this.listX(), this.topPos + 21, SccGui.TEXT, false);
         g.drawString(this.font, offers.size() + " offer(s)", this.listX() + 124, this.topPos + 21, SccGui.MUTED, false);
         if (offers.isEmpty()) {
-            String why = be.villager() == null ? "Put a villager in the chamber."
-                    : "none".equals(be.workstationName()) ? "Add a workstation: a villager only trades with one."
-                    : "Asking the server for the trades...";
+            String why = !this.view.hasVillager() ? "Put a villager in the chamber."
+                    : this.view.bench().isEmpty() ? "Add a workstation: a villager only trades with one."
+                    : "This villager has no trades.";
             g.drawString(this.font, why, this.listX() + 4, this.listY() + 8, SccGui.MUTED, false);
         }
         for (int row = 0; row < ROWS; row++) {
@@ -363,100 +430,131 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
         SccGui.verticalScrollbar(g, this.listX() + 176, this.listY(), ROWS * ROW_H, offers.size(), 1, ROWS, this.scroll);
     }
 
-    private void drawBottom(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
+    private void drawBottom(GuiGraphics g, int mouseX, int mouseY) {
         int by = this.bottomY();
         g.fill(this.listX() - 2, by - 3, this.leftPos + this.imageWidth - 6, by - 2, SccGui.BORDER);
-        String where = switch (be.output()) {
-            case NETWORK -> "network";
-            case NEARBY -> "nearby, then network";
-            case PLAYER -> "to me";
+        String where = switch (this.view.output()) {
+            case 0 -> "network";
+            case 1 -> "nearby, then network";
+            default -> "to me";
         };
         this.button(g, this.listX(), by + 4, 180, "Results go to: " + where, mouseX, mouseY);
-        String xp = switch (be.xpMode()) {
-            case AUTO -> "fluid if a mod has it, else orbs";
-            case ORBS -> "orbs";
-            case OFF -> "none";
+        String xp = switch (this.view.xpMode()) {
+            case 0 -> "fluid if a mod has it, else orbs";
+            case 1 -> "orbs";
+            default -> "none";
         };
         this.button(g, this.listX(), by + 22, 180, "Experience: " + xp, mouseX, mouseY);
         if (in(mouseX, mouseY, this.listX(), by + 22, 180, 16)) {
             SccGui.tooltip(g, this.font, List.of(Component.literal("What a trade's experience becomes."),
                     Component.literal("auto: experience fluid in the network if a mod adds one, orbs otherwise")), mouseX, mouseY);
         }
-        SccGui.clipped(g, this.font, be.stateText(), this.listX(), by + 42, 182, SccGui.MUTED);
+        SccGui.clipped(g, this.font, this.view.state(), this.listX(), by + 42, 182, SccGui.MUTED);
     }
 
-    private void drawCycle(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
+    private void drawCycle(GuiGraphics g, int mouseX, int mouseY) {
         g.fill(this.leftPos, this.topPos, this.leftPos + this.imageWidth, this.topPos + this.imageHeight, 0xB0000000);
         int px = this.popX();
         int py = this.popY();
         int pw = this.popW();
         SccGui.panel(g, px, py, pw, this.popH(), SccGui.BG);
         SccGui.header(g, px + 1, py + 1, pw - 2, 14);
-        g.drawString(this.font, "Cycle  ·  saved villagers", px + 8, py + 4, SccGui.ACCENT, false);
-        this.button(g, px + pw - 92, py + 15, 86, "Save current", mouseX, mouseY);
-        List<VillageChamberBlockEntity.Setup> setups = be.setups();
-        if (setups.isEmpty()) {
-            g.drawString(this.font, "Nothing saved yet. Save the villager in the chamber,", px + 10, py + 40, SccGui.MUTED, false);
-            g.drawString(this.font, "then put another one in and cycle between them.", px + 10, py + 52, SccGui.MUTED, false);
+        g.drawString(this.font, "Cycle  ·  waiting in the system", px + 8, py + 4, SccGui.ACCENT, false);
+        g.drawString(this.font, "Villagers", px + 8, py + 22, SccGui.TEXT, false);
+        this.button(g, px + pw - 128, py + 18, 120, "Store current", mouseX, mouseY);
+        if (in(mouseX, mouseY, px + pw - 128, py + 18, 120, 16)) {
+            SccGui.tooltip(g, this.font, List.of(Component.literal("Moves the villager and its workstation"),
+                    Component.literal("into the system. Nothing is copied.")), mouseX, mouseY);
         }
-        for (int row = 0; row < POP_ROWS; row++) {
-            int index = this.popScroll + row;
-            if (index >= setups.size()) {
+        List<VillageView.Villager> villagers = this.view.villagers();
+        if (villagers.isEmpty()) {
+            g.drawString(this.font, "No villager item in the system. Store the one in the chamber,", px + 10, this.cardsY() + 6, SccGui.MUTED, false);
+            g.drawString(this.font, "or put villager items in a chest or storage on the network.", px + 10, this.cardsY() + 18, SccGui.MUTED, false);
+        }
+        for (int row = 0; row < CARDS; row++) {
+            int index = this.cardScroll + row;
+            if (index >= villagers.size()) {
                 break;
             }
-            VillageChamberBlockEntity.Setup setup = setups.get(index);
-            Card card = this.cards.computeIfAbsent(setup, VillageScreen::card);
-            int y = py + 30 + row * POP_ROW + 16;
-            int x = px + 8;
-            g.fill(x, y - 14 + 0, px + pw - 8, y - 14 + POP_ROW - 2, SccGui.PLATE_BG);
-            if (setup.bench() != null) {
-                BuiltInRegistries.ITEM.getOptional(setup.bench()).ifPresent(item -> g.renderItem(new ItemStack(item), x + 4, y - 11));
+            this.drawCard(g, villagers.get(index), px + 8, this.cardsY() + row * CARD_H, pw - 24, mouseX, mouseY);
+        }
+        SccGui.verticalScrollbar(g, px + pw - 12, this.cardsY(), CARDS * CARD_H, villagers.size(), 1, CARDS, this.cardScroll);
+        // workstations in the system
+        int sy = this.stripY();
+        g.fill(px + 6, sy - 3, px + pw - 6, sy - 2, SccGui.BORDER);
+        g.drawString(this.font, "Workstations in the system - click one to swap it in", px + 8, sy, SccGui.TEXT, false);
+        List<VillageView.Bench> benches = this.view.benches();
+        if (benches.isEmpty()) {
+            g.drawString(this.font, "none", px + 10, sy + 16, SccGui.MUTED, false);
+        }
+        for (int i = 0; i < BENCHES; i++) {
+            int index = this.benchScroll + i;
+            if (index >= benches.size()) {
+                break;
             }
-            g.drawString(this.font, this.font.plainSubstrByWidth(card.profession() + "  lvl " + card.level(), 120), x + 26, y - 10, SccGui.TEXT, false);
-            int ix = x + 26;
-            for (int i = 0; i < Math.min(5, card.results().size()); i++) {
-                g.renderItem(card.results().get(i), ix, y - 1);
-                ix += 17;
-            }
-            boolean useHover = in(mouseX, mouseY, px + pw - 92, y - 8, 46, 16);
-            g.fill(px + pw - 92, y - 8, px + pw - 46, y + 8, useHover ? SccGui.ROW_HOVER : 0xFF10161C);
-            SccGui.outline(g, px + pw - 92, y - 8, 46, 16, useHover ? SccGui.ACCENT : SccGui.BORDER);
-            g.drawString(this.font, "Use", px + pw - 76, y - 4, SccGui.TEXT, false);
-            boolean delHover = in(mouseX, mouseY, px + pw - 42, y - 8, 34, 16);
-            g.fill(px + pw - 42, y - 8, px + pw - 8, y + 8, delHover ? 0xFF3A2222 : 0xFF10161C);
-            SccGui.outline(g, px + pw - 42, y - 8, 34, 16, delHover ? SccGui.BAD : SccGui.BORDER);
-            g.drawString(this.font, "Take", px + pw - 38, y - 4, SccGui.TEXT, false);
-            if (delHover) {
-                SccGui.tooltip(g, this.font, Component.literal("Take this villager and its bench out of the list"), mouseX, mouseY);
+            VillageView.Bench bench = benches.get(index);
+            int x = px + 8 + i * 18;
+            boolean hover = in(mouseX, mouseY, x, sy + 12, 18, 18);
+            g.fill(x, sy + 12, x + 18, sy + 30, hover ? SccGui.ROW_HOVER : SccGui.PLATE_BG);
+            SccGui.outline(g, x, sy + 12, 18, 18, hover ? SccGui.ACCENT : SccGui.BORDER);
+            g.renderItem(bench.stack(), x + 1, sy + 13);
+            if (hover) {
+                SccGui.tooltip(g, this.font, List.of(bench.stack().getHoverName(), Component.literal(bench.count() + " in the system")), mouseX, mouseY);
             }
         }
-        SccGui.verticalScrollbar(g, px + pw - 6, py + 30, POP_ROWS * POP_ROW, setups.size(), 1, POP_ROWS, this.popScroll);
         g.drawString(this.font, "Esc or click outside to close", px + 8, py + this.popH() - 11, SccGui.MUTED, false);
     }
 
-    private static Card card(VillageChamberBlockEntity.Setup setup) {
-        String profession = "villager";
-        int level = 1;
-        List<ItemStack> results = new ArrayList<>();
-        try {
-            if (Minecraft.getInstance().level != null) {
-                EasyVillagerEntity villager = VillagerData.createEasyVillager(setup.villager(), Minecraft.getInstance().level);
-                net.minecraft.world.entity.npc.VillagerData data = villager.getVillagerData();
-                ResourceLocation key = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession());
-                profession = key.getPath().replace('_', ' ');
-                level = data.getLevel();
-                try {
-                    for (MerchantOffer offer : villager.getOffers()) {
-                        results.add(offer.getResult());
-                    }
-                } catch (IllegalStateException noOffersYet) {
-                    // saved before its offers were made
-                }
-            }
-        } catch (RuntimeException ignored) {
-            // show what we have
+    /** One villager waiting in the system: its name, its level, and a preview of what it trades. */
+    private void drawCard(GuiGraphics g, VillageView.Villager card, int x, int y, int w, int mouseX, int mouseY) {
+        g.fill(x, y, x + w, y + CARD_H - 3, SccGui.PLATE_BG);
+        String head = card.name() + "  ·  " + card.profession() + " lvl " + card.level() + (card.count() > 1 ? "  x" + card.count() : "");
+        g.drawString(this.font, this.font.plainSubstrByWidth(head, w - 108), x + 6, y + 5, SccGui.TEXT, false);
+        // the trades it already has, as cost -> result
+        if (card.offers().isEmpty()) {
+            g.drawString(this.font, "no trades made yet", x + 6, y + 24, SccGui.MUTED, false);
         }
-        return new Card(profession, level, results);
+        int ix = x + 6;
+        int shown = 0;
+        for (MerchantOffer offer : card.offers()) {
+            if (shown >= 4) {
+                g.drawString(this.font, "+" + (card.offers().size() - shown), ix, y + 28, SccGui.MUTED, false);
+                break;
+            }
+            this.mini(g, offer.getCostA(), ix, y + 22, mouseX, mouseY);
+            g.drawString(this.font, "→", ix + 14, y + 26, SccGui.MUTED, false);
+            this.mini(g, offer.getResult(), ix + 22, y + 22, mouseX, mouseY);
+            ix += 40;
+            shown++;
+        }
+        int bx = x + w - 88;
+        boolean useHover = in(mouseX, mouseY, bx, y + 6, 40, 16);
+        g.fill(bx, y + 6, bx + 40, y + 22, useHover ? SccGui.ROW_HOVER : 0xFF10161C);
+        SccGui.outline(g, bx, y + 6, 40, 16, useHover ? SccGui.ACCENT : SccGui.BORDER);
+        g.drawString(this.font, "Use", bx + 12, y + 10, SccGui.TEXT, false);
+        boolean takeHover = in(mouseX, mouseY, bx + 44, y + 6, 40, 16);
+        g.fill(bx + 44, y + 6, bx + 84, y + 22, takeHover ? SccGui.ROW_HOVER : 0xFF10161C);
+        SccGui.outline(g, bx + 44, y + 6, 40, 16, takeHover ? SccGui.ACCENT : SccGui.BORDER);
+        g.drawString(this.font, "Take", bx + 54, y + 10, SccGui.TEXT, false);
+        if (useHover) {
+            SccGui.tooltip(g, this.font, Component.literal("Swap this villager in; the one in the chamber goes into the system"), mouseX, mouseY);
+        } else if (takeHover) {
+            SccGui.tooltip(g, this.font, Component.literal("Take this villager out of the system"), mouseX, mouseY);
+        }
+    }
+
+    private void mini(GuiGraphics g, ItemStack stack, int x, int y, int mx, int my) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale(0.75F, 0.75F, 1.0F);
+        g.renderItem(stack, 0, 0);
+        g.pose().popPose();
+        if (in(mx, my, x, y, 12, 12)) {
+            g.renderTooltip(this.font, stack, mx, my);
+        }
     }
 
     private void button(GuiGraphics g, int x, int y, int w, String label, int mx, int my) {

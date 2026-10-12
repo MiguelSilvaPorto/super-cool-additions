@@ -8,20 +8,23 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/** An action taken in the chamber's window. */
-public record VillageConfigPayload(BlockPos pos, int action, int value, int extra) implements CustomPacketPayload {
+/** An action taken in the chamber's window; the server answers with the window's new {@link VillageView}. */
+public record VillageConfigPayload(BlockPos pos, int action, int value, int extra, String text) implements CustomPacketPayload {
     public static final int TRADE = 0;
     public static final int OUTPUT = 1;
     public static final int TAKE_VILLAGER = 2;
     public static final int TAKE_WORKSTATION = 3;
     public static final int REMOVE_MODULE = 4;
     public static final int REFRESH = 5;
-    public static final int SAVE_SETUP = 6;
-    public static final int USE_SETUP = 7;
-    public static final int DELETE_SETUP = 8;
+    public static final int STORE_CURRENT = 6;
+    public static final int USE_VILLAGER = 7;
+    public static final int TAKE_FROM_SYSTEM = 8;
     public static final int XP_MODE = 9;
+    public static final int USE_BENCH = 10;
+    public static final int RENAME = 11;
 
     public static final Type<VillageConfigPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SccAdditions.MODID, "village_config"));
     public static final StreamCodec<RegistryFriendlyByteBuf, VillageConfigPayload> CODEC = StreamCodec.composite(
@@ -29,6 +32,7 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
             ByteBufCodecs.VAR_INT, VillageConfigPayload::action,
             ByteBufCodecs.VAR_INT, VillageConfigPayload::value,
             ByteBufCodecs.VAR_INT, VillageConfigPayload::extra,
+            ByteBufCodecs.stringUtf8(1024), VillageConfigPayload::text,
             VillageConfigPayload::new);
 
     @Override
@@ -44,6 +48,7 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
                     || !(player.level().getBlockEntity(payload.pos()) instanceof VillageChamberBlockEntity be)) {
                 return;
             }
+            boolean close = false;
             switch (payload.action()) {
                 case TRADE -> be.trade(payload.value(), Math.max(1, Math.min(64, payload.extra())), player);
                 case OUTPUT -> be.setOutput(VillageChamberBlockEntity.Output.values()[Math.floorMod(payload.value(), VillageChamberBlockEntity.Output.values().length)]);
@@ -51,15 +56,22 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
                 case TAKE_WORKSTATION -> be.takeWorkstationOut(player);
                 case REMOVE_MODULE -> {
                     be.removeModule(player);
-                    player.closeContainer();
+                    close = true;
                 }
                 case REFRESH -> be.refresh();
-                case SAVE_SETUP -> be.saveSetup();
-                case USE_SETUP -> be.useSetup(payload.value());
-                case DELETE_SETUP -> be.deleteSetup(payload.value(), player);
+                case STORE_CURRENT -> be.storeCurrent(player);
+                case USE_VILLAGER -> be.useVillager(payload.text(), player);
+                case TAKE_FROM_SYSTEM -> be.takeVillager(payload.text(), player);
+                case USE_BENCH -> be.useBench(payload.text(), player);
+                case RENAME -> be.rename(payload.text());
                 case XP_MODE -> be.setXpMode(VillageChamberBlockEntity.XpMode.values()[Math.floorMod(payload.value(), VillageChamberBlockEntity.XpMode.values().length)]);
                 default -> {
                 }
+            }
+            if (close) {
+                player.closeContainer();
+            } else {
+                PacketDistributor.sendToPlayer(player, new VillageViewPayload(payload.pos(), be.buildView()));
             }
         });
     }

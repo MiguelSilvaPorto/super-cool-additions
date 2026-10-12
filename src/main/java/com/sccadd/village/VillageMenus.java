@@ -14,6 +14,7 @@ final class VillageMenus {
         if (player instanceof ServerPlayer serverPlayer) {
             serverPlayer.openMenu(new SimpleMenuProvider((id, inventory, p) -> new VillageMenu(id, inventory, be.getBlockPos()),
                     Component.literal("Village Chamber")), buf -> buf.writeBlockPos(be.getBlockPos()));
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer, new VillageViewPayload(be.getBlockPos(), be.buildView()));
         }
     }
 }

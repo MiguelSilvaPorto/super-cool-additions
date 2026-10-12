@@ -80,10 +80,6 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         OFF
     }
 
-    /** A villager (with its offers and levels) and the workstation it works at, kept to swap in later. */
-    public record Setup(ItemStack villager, @Nullable ResourceLocation bench) {
-    }
-
     private static final TagKey<Fluid> EXPERIENCE = TagKey.create(Registries.FLUID, ResourceLocation.fromNamespaceAndPath("c", "experience"));
     private static final int MB_PER_XP = 20;
     private static final int MAX_PENDING = 64;
@@ -97,8 +93,8 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
     private CompoundTag innerData;
     private Output output = Output.NETWORK;
     private XpMode xpMode = XpMode.AUTO;
-    private final List<Setup> setups = new ArrayList<>();
     private int lastUses = -1;
+    private final List<ItemStack> migrated = new ArrayList<>();
     private String state = "no module";
     private final List<ItemStack> pending = new ArrayList<>();
     /** Diagnostics only: trades cost nothing and nothing is taken from a network. */
@@ -261,13 +257,6 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             Block.popResource(level, pos, waiting);
         }
         this.pending.clear();
-        for (Setup setup : this.setups) {
-            Block.popResource(level, pos, setup.villager());
-            if (setup.bench() != null) {
-                BuiltInRegistries.ITEM.getOptional(setup.bench()).ifPresent(item -> Block.popResource(level, pos, new ItemStack(item)));
-            }
-        }
-        this.setups.clear();
         this.module = Module.NONE;
         this.inner = null;
     }
@@ -486,65 +475,201 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         this.lastUses = uses;
     }
 
-    // ---- saved villagers: swap them in quickly ----
+    // ---- what the window shows ----
 
-    public List<Setup> setups() {
-        return this.setups;
+    /** The window's content, made here so a client never has to ask a villager for anything. */
+    public VillageView buildView() {
+        TraderTileentityBase module = this.inner();
+        EasyVillagerEntity villager = this.villager();
+        String profession = "";
+        int level = 1;
+        int xp = 0;
+        int xpFrom = 0;
+        int xpTo = 0;
+        boolean top = false;
+        String name = "";
+        List<MerchantOffer> offers = List.of();
+        if (villager != null) {
+            net.minecraft.world.entity.npc.VillagerData data = villager.getVillagerData();
+            profession = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).getPath().replace('_', ' ');
+            level = data.getLevel();
+            xp = villager.getVillagerXp();
+            top = !net.minecraft.world.entity.npc.VillagerData.canLevelUp(level);
+            xpFrom = net.minecraft.world.entity.npc.VillagerData.getMinXpPerLevel(level);
+            xpTo = net.minecraft.world.entity.npc.VillagerData.getMaxXpPerLevel(level);
+            name = villager.hasCustomName() ? villager.getCustomName().getString() : "";
+            offers = new ArrayList<>(this.offers());
+        }
+        ItemStack bench = module != null && module.hasWorkstation() ? new ItemStack(module.getWorkstation()) : ItemStack.EMPTY;
+        List<VillageView.Villager> villagers = new ArrayList<>();
+        List<VillageView.Bench> benches = new ArrayList<>();
+        NetworkView view = this.freeTrades || this.level == null ? null : this.network();
+        if (view != null && view.online()) {
+            for (java.util.Map.Entry<StackKey, Long> entry : view.contents().entrySet()) {
+                StackKey key = entry.getKey();
+                if (key.item() instanceof VillagerItem) {
+                    VillageView.Villager card = this.card(view, key, entry.getValue());
+                    if (card != null) {
+                        villagers.add(card);
+                    }
+                } else if (key.item() instanceof BlockItem blockItem && professionFor(blockItem.getBlock()) != null
+                        && module != null && module.isValidBlock(blockItem.getBlock())) {
+                    benches.add(new VillageView.Bench(key.encode(), new ItemStack(blockItem), entry.getValue()));
+                }
+            }
+        }
+        return new VillageView(this.module.ordinal(), villager != null, profession, level, xp, xpFrom, xpTo, top, name, bench, offers,
+                this.output.ordinal(), this.xpMode.ordinal(), this.state, villagers, benches);
     }
 
-    /** Remembers the villager in the chamber and its workstation, leaving them where they are. */
-    public void saveSetup() {
+    /** What the window shows of a villager item in the system: its name, profession, level and the offers it already has. */
+    @Nullable
+    private VillageView.Villager card(NetworkView view, StackKey key, long count) {
+        ItemStack stack = view.extract(key, 1, true);
+        if (stack.isEmpty() || this.level == null) {
+            return null;
+        }
+        String profession = "villager";
+        int level = 1;
+        String name = stack.getHoverName().getString();
+        List<MerchantOffer> offers = new ArrayList<>();
+        try {
+            EasyVillagerEntity entity = VillagerData.createEasyVillager(stack, this.level);
+            net.minecraft.world.entity.npc.VillagerData data = entity.getVillagerData();
+            profession = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).getPath().replace('_', ' ');
+            level = data.getLevel();
+            if (entity.hasCustomName()) {
+                name = entity.getCustomName().getString();
+            }
+            // only the offers it has already made: asking would roll new ones every time the window looks
+            Field field = net.minecraft.world.entity.npc.AbstractVillager.class.getDeclaredField("offers");
+            field.setAccessible(true);
+            Object made = field.get(entity);
+            if (made instanceof MerchantOffers list) {
+                offers.addAll(list);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // show what we have
+        }
+        return new VillageView.Villager(key.encode(), name, profession, level, (int) Math.min(count, 9999L), offers);
+    }
+
+    // ---- villagers and workstations in the system: swap them in quickly ----
+
+    /** The villager and workstation in the chamber go into the system; nothing is copied, they move. */
+    public void storeCurrent(@Nullable Player player) {
         TraderTileentityBase module = this.inner();
-        if (module == null || !module.hasVillager()) {
+        NetworkView view = this.freeTrades ? null : this.network();
+        if (module == null || view == null || !view.online()) {
+            this.say(player, "Not on a running network.");
             return;
         }
-        module.saveVillagerEntity();
-        ResourceLocation bench = module.hasWorkstation() ? BuiltInRegistries.BLOCK.getKey(module.getWorkstation()) : null;
-        this.setups.add(new Setup(module.getVillager().copy(), bench));
+        if (module.hasVillager()) {
+            module.saveVillagerEntity();
+            ItemStack villager = module.getVillager().copy();
+            ItemStack left = view.insert(villager, false);
+            if (!left.isEmpty()) {
+                this.say(player, "The system has no room for the villager.");
+                return;
+            }
+            module.removeVillager();
+        }
+        if (module.hasWorkstation()) {
+            Block block = module.removeWorkstation();
+            if (block != null) {
+                ItemStack left = view.insert(new ItemStack(block), false);
+                if (!left.isEmpty()) {
+                    ItemHandlerHelper.giveItemToPlayer(player, left);
+                }
+            }
+        }
+        this.lastUses = -1;
+        this.say(player, "Villager and workstation stored in the system.");
         this.changed();
     }
 
-    /** Swaps the chamber's villager and workstation for a saved pair; what was in the chamber takes its place in the list. */
-    public void useSetup(int index) {
+    /** Puts a villager from the system in the chamber; the one that was there goes into the system in its place. */
+    public void useVillager(String code, @Nullable Player player) {
         TraderTileentityBase module = this.inner();
-        if (module == null || index < 0 || index >= this.setups.size()) {
+        NetworkView view = this.freeTrades ? null : this.network();
+        StackKey key = StackKey.decode(code);
+        if (module == null || view == null || !view.online() || key == null) {
             return;
         }
-        Setup next = this.setups.remove(index);
-        Setup current = null;
+        ItemStack incoming = view.extract(key, 1, false);
+        if (incoming.isEmpty()) {
+            this.say(player, "That villager is no longer in the system.");
+            return;
+        }
         if (module.hasVillager()) {
             module.saveVillagerEntity();
-            ResourceLocation bench = module.hasWorkstation() ? BuiltInRegistries.BLOCK.getKey(module.getWorkstation()) : null;
-            current = new Setup(module.removeVillager(), bench);
-        }
-        if (module.hasWorkstation()) {
-            module.removeWorkstation();
-        }
-        module.setVillager(next.villager().copy());
-        if (next.bench() != null) {
-            Block block = BuiltInRegistries.BLOCK.get(next.bench());
-            if (module.isValidBlock(block)) {
-                module.setWorkstation(block);
+            ItemStack left = view.insert(module.getVillager().copy(), false);
+            if (!left.isEmpty()) {
+                view.insert(incoming, false);
+                this.say(player, "The system has no room for the villager in the chamber.");
+                return;
             }
+            module.removeVillager();
         }
-        if (current != null) {
-            this.setups.add(Math.min(index, this.setups.size()), current);
-        }
+        module.setVillager(incoming);
         this.lastUses = -1;
+        this.say(player, "Villager swapped in.");
         this.changed();
         this.ensureOffers();
     }
 
-    /** Takes a saved pair out of the list and gives it to the player. */
-    public void deleteSetup(int index, Player player) {
-        if (index < 0 || index >= this.setups.size()) {
+    /** Gives a villager from the system to the player. */
+    public void takeVillager(String code, Player player) {
+        NetworkView view = this.freeTrades ? null : this.network();
+        StackKey key = StackKey.decode(code);
+        if (view == null || !view.online() || key == null) {
             return;
         }
-        Setup removed = this.setups.remove(index);
-        ItemHandlerHelper.giveItemToPlayer(player, removed.villager());
-        if (removed.bench() != null) {
-            BuiltInRegistries.ITEM.getOptional(removed.bench()).ifPresent(item -> ItemHandlerHelper.giveItemToPlayer(player, new ItemStack(item)));
+        ItemStack out = view.extract(key, 1, false);
+        if (!out.isEmpty()) {
+            ItemHandlerHelper.giveItemToPlayer(player, out);
         }
+    }
+
+    /** Puts a workstation from the system in the chamber; the one that was there goes into the system. */
+    public void useBench(String code, @Nullable Player player) {
+        TraderTileentityBase module = this.inner();
+        NetworkView view = this.freeTrades ? null : this.network();
+        StackKey key = StackKey.decode(code);
+        if (module == null || view == null || !view.online() || key == null
+                || !(key.item() instanceof BlockItem blockItem) || !module.isValidBlock(blockItem.getBlock())) {
+            return;
+        }
+        ItemStack incoming = view.extract(key, 1, false);
+        if (incoming.isEmpty()) {
+            return;
+        }
+        if (module.hasWorkstation()) {
+            Block old = module.removeWorkstation();
+            if (old != null) {
+                ItemStack left = view.insert(new ItemStack(old), false);
+                if (!left.isEmpty()) {
+                    module.setWorkstation(old);
+                    view.insert(incoming, false);
+                    this.say(player, "The system has no room for the workstation in the chamber.");
+                    return;
+                }
+            }
+        }
+        module.setWorkstation(blockItem.getBlock());
+        this.say(player, "Workstation swapped in.");
+        this.changed();
+        this.ensureOffers();
+    }
+
+    /** Names the villager in the chamber. */
+    public void rename(String name) {
+        EasyVillagerEntity villager = this.villager();
+        if (villager == null) {
+            return;
+        }
+        String clean = name == null ? "" : name.strip();
+        villager.setCustomName(clean.isEmpty() ? null : Component.literal(clean.length() > 40 ? clean.substring(0, 40) : clean));
         this.changed();
     }
 
@@ -595,6 +720,10 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
     }
 
     private void flushPending() {
+        if (!this.migrated.isEmpty()) {
+            this.pending.addAll(this.migrated);
+            this.migrated.clear();
+        }
         if (this.pending.isEmpty()) {
             return;
         }
@@ -739,16 +868,6 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         tag.putString("sccadd_output", this.output.name());
         tag.putString("sccadd_xp", this.xpMode.name());
         tag.putString("sccadd_state", this.state);
-        ListTag saved = new ListTag();
-        for (Setup setup : this.setups) {
-            CompoundTag entry = new CompoundTag();
-            entry.put("villager", setup.villager().save(provider));
-            if (setup.bench() != null) {
-                entry.putString("bench", setup.bench().toString());
-            }
-            saved.add(entry);
-        }
-        tag.put("sccadd_setups", saved);
         ListTag list = new ListTag();
         for (ItemStack stack : this.pending) {
             list.add(stack.save(provider));
@@ -776,13 +895,19 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         } catch (IllegalArgumentException unknown) {
             this.xpMode = XpMode.AUTO;
         }
-        this.setups.clear();
+        // an older build kept saved villagers inside the chamber: hand them to the system through the pending list
         ListTag saved = tag.getList("sccadd_setups", Tag.TAG_COMPOUND);
         for (int i = 0; i < saved.size(); i++) {
             CompoundTag entry = saved.getCompound(i);
             ItemStack stack = ItemStack.parseOptional(provider, entry.getCompound("villager"));
             if (!stack.isEmpty()) {
-                this.setups.add(new Setup(stack, entry.contains("bench") ? ResourceLocation.tryParse(entry.getString("bench")) : null));
+                this.migrated.add(stack);
+            }
+            if (entry.contains("bench")) {
+                ResourceLocation bench = ResourceLocation.tryParse(entry.getString("bench"));
+                if (bench != null) {
+                    BuiltInRegistries.ITEM.getOptional(bench).ifPresent(item -> this.migrated.add(new ItemStack(item)));
+                }
             }
         }
         this.state = tag.contains("sccadd_state") ? tag.getString("sccadd_state") : "no module";

@@ -62,11 +62,14 @@ final class VillageSelfTest {
         // experience: orbs next to the chamber (no experience fluid in this test)
         int orbs = level.getEntitiesOfClass(net.minecraft.world.entity.ExperienceOrb.class, new net.minecraft.world.phys.AABB(pos).inflate(3.0)).size();
         out.append(" orbs ").append(orbs);
-        // saved villagers: save the current one, swap it back in through the list
-        be.saveSetup();
-        int saved = be.setups().size();
-        be.useSetup(0);
-        out.append(", setups ").append(saved).append("->").append(be.setups().size());
+        // the window's view, through the codec the server uses to send it
+        be.rename("Bob");
+        VillageView before = be.buildView();
+        var buf = new net.minecraft.network.RegistryFriendlyByteBuf(io.netty.buffer.Unpooled.buffer(), level.registryAccess());
+        VillageView.CODEC.encode(buf, before);
+        VillageView after = VillageView.CODEC.decode(buf);
+        out.append(", view ").append(before.offers().size()).append("->").append(after.offers().size()).append(" offers, name '")
+                .append(after.name()).append("', profession ").append(after.profession()).append(" lvl ").append(after.level());
         var villager = be.villager();
         out.append(" level ").append(villager == null ? -1 : villager.getVillagerData().getLevel())
                 .append(", xp ").append(villager == null ? -1 : villager.getVillagerXp())
