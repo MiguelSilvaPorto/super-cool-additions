@@ -90,6 +90,21 @@ Agora: junto com a lista, o cliente envia as **receitas** dos itens oferecidos. 
 - **Antena de Rede encostada na rede AE2**: o estoque do SCC aparece no ME (terminais AE2 veem os itens) e o modo híbrido de fabricação é ativado.
 - O addon não mexe nisso — está documentado aqui para você usar.
 
+### 2.4 Receptor Sem Fio como ponte AE2 (novo no addon)
+
+Sem antena: o par sem fio vira a ponte.
+
+1. **Transmissor Sem Fio** na rede SCC (base).
+2. **Receptor Sem Fio** encostado na rede AE2 (cabo/controlador/drive).
+3. Pronto: o receptor vira um nó do AE2 e faz o mesmo papel da antena —
+   - expõe a **rede SCC como armazenamento ME** (terminais e Storage Buses do AE2 veem os itens, ida e volta);
+   - oferece as **receitas do SCC como padrões reais** (com ingredientes): o AE2 mostra o plano de fabricação e pede sua **confirmação** antes de rodar;
+   - aprovado → o AE2 empurra os ingredientes → **o job SCC roda** → o resultado volta para o ME.
+
+Config: `[ae2] bridgeOnReceiver` (padrão `true`). Com dois pares transmissor/receptor você escolhe exatamente qual rede SCC conversa com qual rede AE2 — pensado para servidores com várias redes.
+
+> A Antena de Rede continua funcionando como sempre; quem preferir o fluxo antigo é só desligar esta opção.
+
 ---
 
 ## 3. Build

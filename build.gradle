@@ -53,14 +53,36 @@ dependencies {
 }
 
 // Make sure the runtime mods folder gets the dependency jars for local test runs.
-tasks.register('copyDevMods', Copy) {
+// The client gets everything; the dedicated server must not see client-only mods.
+def clientOnlyMods = [
+        'sodium-*.jar',
+        'sodium-extra-*.jar',
+        'Controlling-*.jar',
+        'Searchables-*.jar',
+        'Jade-*.jar',
+        'ferritecore-*.jar',
+        'jei-*.jar'
+]
+
+tasks.register('copyClientMods', Sync) {
     from 'libs'
     include '*.jar'
     into layout.projectDirectory.dir('run/mods')
 }
 
-tasks.matching { it.name == 'prepareRuns' || it.name.startsWith('run') }.configureEach {
-    dependsOn 'copyDevMods'
+tasks.register('copyServerMods', Sync) {
+    from 'libs'
+    include '*.jar'
+    exclude clientOnlyMods
+    into layout.projectDirectory.dir('run/mods')
+}
+
+tasks.matching { it.name == 'runClient' || it.name == 'prepareClientRun' }.configureEach {
+    dependsOn 'copyClientMods'
+}
+
+tasks.matching { it.name == 'runServer' || it.name == 'prepareServerRun' }.configureEach {
+    dependsOn 'copyServerMods'
 }
 
 // Expand ${version} and friends inside neoforge.mods.toml (FML does not understand them).
