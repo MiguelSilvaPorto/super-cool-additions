@@ -36,6 +36,11 @@ public final class ReceiverBridges {
         bridge(be).offered(text, where);
     }
 
+    @org.jetbrains.annotations.Nullable
+    public static synchronized ReceiverMeConnector connector(WirelessReceiverBlockEntity be) {
+        return bridge(be).meConnector();
+    }
+
     private static ReceiverBridge bridge(WirelessReceiverBlockEntity be) {
         return BRIDGES.computeIfAbsent(be, ReceiverBridge::new);
     }

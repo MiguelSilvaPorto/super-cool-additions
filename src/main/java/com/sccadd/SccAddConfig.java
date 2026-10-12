@@ -20,6 +20,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue SCC_PATTERNS_IN_AE2;
     public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
     public static final ModConfigSpec.BooleanValue AE2_BRIDGE_ON_RECEIVER;
+    public static final ModConfigSpec.BooleanValue AE2_RECEIVER_READS_ME;
     public static final ModConfigSpec.BooleanValue AE2_FLUIDS;
     public static final ModConfigSpec.BooleanValue AE2_OFFER_REQUIRES_STOCK;
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
@@ -95,6 +96,11 @@ public final class SccAddConfig {
                         "Put the receiver next to the AE2 network: it mounts the SCC network as ME storage",
                         "and offers the SCC recipes as real patterns - no antenna needed.")
                 .define("bridgeOnReceiver", true);
+
+        AE2_RECEIVER_READS_ME = builder
+                .comment("The Wireless Receiver also reads the AE2 network it touches into the SCC network:",
+                        "ME items count as SCC stock (terminals list them, recipes can use them).")
+                .define("receiverReadsMe", true);
 
         AE2_FLUIDS = builder
                 .comment("Bridge fluids between AE2 and SCC, both directions (items already work).",
@@ -185,6 +191,10 @@ public final class SccAddConfig {
 
     public static boolean bridgeOnReceiver() {
         return AE2_BRIDGE_ON_RECEIVER.get();
+    }
+
+    public static boolean receiverReadsMe() {
+        return AE2_RECEIVER_READS_ME.get();
     }
 
     public static boolean ae2Fluids() {

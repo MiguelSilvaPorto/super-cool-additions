@@ -28,6 +28,16 @@ public final class SccAe2Delivery {
         if (view == null || view.free(wanted) <= 0L) {
             return 0L;
         }
+        com.sccadd.ae2.receiver.ReceiverMeConnector.suspend(true);
+        try {
+            return deliverNow(level, inventory, view, be, key, wanted, want);
+        } finally {
+            com.sccadd.ae2.receiver.ReceiverMeConnector.suspend(false);
+        }
+    }
+
+    private static long deliverNow(ServerLevel level, MEStorage inventory, NetworkView view, NetworkBlockEntity be,
+                                   AEItemKey key, StackKey wanted, long want) {
         ItemStack template = key.toStack();
         int max = Math.max(1, template.getMaxStackSize());
         long done = 0L;

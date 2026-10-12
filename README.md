@@ -103,6 +103,8 @@ Sem antena: o par sem fio vira a ponte.
 
 Config: `[ae2] bridgeOnReceiver` (padrão `true`). Com dois pares transmissor/receptor você escolhe exatamente qual rede SCC conversa com qual rede AE2 — pensado para servidores com várias redes.
 
+O receptor também lê a rede ME para dentro do SCC: os itens do AE2 contam como estoque SCC, sem Conector de Armazenamento. Config: `[ae2] receiverReadsMe` (padrão `true`).
+
 > A Antena de Rede continua funcionando como sempre; quem preferir o fluxo antigo é só desligar esta opção.
 
 ---

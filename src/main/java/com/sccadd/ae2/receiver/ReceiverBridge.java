@@ -76,6 +76,25 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
                 .addService(ICraftingProvider.class, this);
     }
 
+    @Nullable
+    IGridNode node() {
+        this.ensureCreated();
+        return this.main.getNode();
+    }
+
+    @Nullable
+    private ReceiverMeConnector meConnector;
+    private boolean meWasActive;
+
+    /** The receiver's ME view as an SCC storage, or null when it touches no active grid. */
+    @Nullable
+    ReceiverMeConnector meConnector() {
+        if (this.meConnector == null && this.be.getLevel() != null) {
+            this.meConnector = new ReceiverMeConnector(this.be, this);
+        }
+        return this.meConnector;
+    }
+
     void ensureCreated() {
         if (!this.created && this.be.getLevel() != null && !this.be.getLevel().isClientSide) {
             this.created = true;
@@ -154,7 +173,12 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             return;
         }
         IGridNode node = this.main.getNode();
-        if (node == null || !node.isActive()) {
+        boolean active = node != null && node.isActive();
+        if (active != this.meWasActive) {
+            this.meWasActive = active;
+            de.scc.calculator.network.NetworkCache.invalidate(server);
+        }
+        if (!active) {
             return;
         }
         ICraftingService crafting = node.getGrid().getCraftingService();

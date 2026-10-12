@@ -18,7 +18,10 @@
     "Ae2ReceiverRemoveMixin",
     "Ae2FluidConnectorMixin",
     "Ae2ConnectorStateMixin",
-    "ConnectorAllowsInvoker"
+    "ConnectorAllowsInvoker",
+    "Ae2NetworkScannerMixin",
+    "Ae2MeStoreInvoker",
+    "NetworkViewAdd"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
