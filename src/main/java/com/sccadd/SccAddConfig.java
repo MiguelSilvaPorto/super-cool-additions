@@ -129,7 +129,7 @@ public final class SccAddConfig {
         AE2_DEBUG_OFFER = builder
                 .comment("Write the state of the 'what can SCC build' offer to logs/scc.log every 5 seconds.",
                         "Diagnosis aid: shows active/cpus/terminal/offer/emitted. Turn off when done.")
-                .define("debugOffer", true);
+                .define("debugOffer", false);
 
         AE2_BRIDGE_ON_RECEIVER = builder
                 .comment("The Wireless Receiver acts as an AE2 bridge, like the Network Antenna.",

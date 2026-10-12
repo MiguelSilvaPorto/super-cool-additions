@@ -52,11 +52,10 @@ Estado em 12/10/2026. 101 arquivos, 16 opções de config, ~36 commits.
       + stress do buffer cheio (drops que não cabem).
 
 ### Acabamento de release
-- [ ] `debugOffer` está **ligado por padrão** (logs a cada 5-10s) → virar `false`.
-- [ ] Subir a versão (0.1.0 → 1.0.0) + tag/release no GitHub + atualizar a descrição
-      do `neoforge.mods.toml` (hoje só fala do fix e do AE2).
-- [ ] **README/TESTING/NOTAS desatualizados** — não citam chains, pocket, filtro
-      avançado, machine force, modo lote etc.
+- [x] `debugOffer` agora é **`false`** por padrão.
+- [x] Versão **1.0.0** e descrição do `neoforge.mods.toml` atualizadas.
+- [ ] Tag/release no GitHub (decisão do dono).
+- [x] README/TESTING atualizados (cadeias, bolso, filtro avançado, máquina forçada, modo lote, prensas).
 - [ ] Decidir visibilidade do repositório (privado hoje).
 - [ ] (Opcional) teste de fumaça automático no CI (subir servidor + mixins).
 

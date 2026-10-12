@@ -1,12 +1,12 @@
-# Checklist de teste — sccadd 0.1.0
+# Checklist de teste — sccadd 1.0.0
 
 Instância: `scc fix` (NeoForge 21.1.251, SCC 1.4.0, AE2 19.2.18, Observable).
-O jar já está em `mods/sccadd-0.1.0.jar`.
+O jar já está em `mods/sccadd-1.0.0.jar`.
 
 ## 1. O jogo abre
 
 - [ ] Cliente chega ao menu principal sem crash.
-- [ ] Lista de mods mostra **Super Cool Additions 0.1.0**.
+- [ ] Lista de mods mostra **Super Cool Additions 1.0.0**.
 - [ ] `config/sccadd-common.toml` foi criado (seção `[breaking]` e `[ae2]`).
 
 ## 2. Performance — Calculadora de Quebra
@@ -46,7 +46,27 @@ um contêiner em cima para a saída.
 - [ ] `logs/scc.log` mostra as mensagens `ae2`/`sccadd` do fluxo.
 - [ ] Sem terminal/planejador, nada trava: o push falha e os itens ficam na rede SCC.
 
-## 5. Relatar
+## 5. Requester e cadeias
+
+- [ ] Item novo numa linha entra **desligado**; Shift+clique liga.
+- [ ] Campos: `64*2`, `1k` e tempo `1m`/`3h` são aceitos; sem teto de 9999.
+- [ ] Editar quantidade/tempo com um job rodando **não** inicia um segundo job.
+- [ ] Clique no slot (cursor vazio): aparecem **Item** e **Chain**.
+- [ ] Editor: + Box, escolher item (seletor) e receita (seletor do SCC), ligar OUT→IN, ★ start, cortar link.
+- [ ] A linha mostra o item da caixa start e "Chain: N boxes".
+- [ ] Ciclo de duas caixas (ex.: madeira ↔ pedra) fecha com "crafts por vez" pequeno.
+- [ ] Pensar: pedido grande vira cartão roxo e retoma com um clique.
+
+## 6. Terminal, bolso, Interface, máquina
+
+- [ ] Filtro avançado e Clean variants; editor de barra por arrastar.
+- [ ] Terminal de bolso: painel à direita só no sem fio; regras por slot.
+- [ ] Interface: slot com template recusa inserção de cano; balde num template cria tanque de fluido.
+- [ ] Processing Calculator: clique direito no ícone da máquina → escolher máquina; "Auto" volta.
+- [ ] Inscriber: `@ae2 proce` mostra os processadores como craftáveis; prensa dentro da máquina não gera pedido de outra; prensa errada volta para a rede.
+- [ ] Ímã puxa itens soltos até 16 blocos.
+
+## 7. Relatar
 
 Para qualquer problema, mande:
 
