@@ -21,6 +21,10 @@ public final class Catalysts {
     private static Set<Item> items = Set.of();
     private static List<? extends String> source;
 
+    /** How long a machine with only presses in it must sit idle before they go back to the system. */
+    public static final int RELEASE_AFTER_TICKS = 100;
+    private static final Map<ProcessingCalculatorBlockEntity, Integer> IDLE = new WeakHashMap<>();
+
     private Catalysts() {
     }
 
@@ -45,5 +49,14 @@ public final class Catalysts {
 
     public static synchronized MachineCatalystConnector connector(ProcessingCalculatorBlockEntity calculator) {
         return CONNECTORS.computeIfAbsent(calculator, MachineCatalystConnector::new);
+    }
+
+    /** Counts the server ticks this machine has been idle (resets when it is not); returns the count. */
+    public static synchronized int idle(ProcessingCalculatorBlockEntity machine, boolean idle) {
+        if (!idle) {
+            IDLE.remove(machine);
+            return 0;
+        }
+        return IDLE.merge(machine, 1, Integer::sum);
     }
 }

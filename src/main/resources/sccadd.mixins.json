@@ -29,7 +29,8 @@
     "ProcessorForcedMachineMixin",
     "ProcessorCatalystScannerMixin",
     "CraftJobCatalystSwapMixin",
-    "ProcessorKeepCatalystMixin"
+    "ProcessorKeepCatalystMixin",
+    "ProcessorReleaseCatalystMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
