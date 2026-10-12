@@ -71,6 +71,29 @@ public final class FingerprintExtra {
     private FingerprintExtra() {
     }
 
+    /**
+     * What the world actually offers in recipes: every recipe type with how many recipes it has. Mod
+     * versions and settings are not enough - a datapack, a script or an added mod that brings recipes
+     * changes nothing in them, yet the cached analysis no longer matches. Empty when no world is loaded.
+     */
+    public static String recipeShape() {
+        try {
+            net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+            if (minecraft.level == null) {
+                return "";
+            }
+            java.util.Map<String, Integer> counts = new java.util.TreeMap<>();
+            for (var holder : minecraft.level.getRecipeManager().getRecipes()) {
+                counts.merge(net.minecraft.core.registries.BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType()).toString(), 1, Integer::sum);
+            }
+            StringBuilder sb = new StringBuilder();
+            counts.forEach((type, count) -> sb.append(type).append('=').append(count).append('\n'));
+            return Long.toHexString(fnv(sb.toString()));
+        } catch (Throwable failed) {
+            return "";
+        }
+    }
+
     public static String signature() {
         StringBuilder sb = new StringBuilder(1_024);
         appendMods(sb);

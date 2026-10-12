@@ -27,7 +27,7 @@ public abstract class AnalysisFingerprintMixin {
     @Inject(method = "hardPrint", at = @At("RETURN"), cancellable = true, require = 0)
     private static void sccadd$resilientHardPrint(CallbackInfoReturnable<String> cir) {
         if (SccAddConfig.resilientAnalysisCache()) {
-            cir.setReturnValue("sccadd1");
+            cir.setReturnValue("sccadd2-" + FingerprintExtra.recipeShape());
         }
     }
 
