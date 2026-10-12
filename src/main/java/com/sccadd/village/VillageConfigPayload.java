@@ -17,6 +17,11 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
     public static final int TAKE_VILLAGER = 2;
     public static final int TAKE_WORKSTATION = 3;
     public static final int REMOVE_MODULE = 4;
+    public static final int REFRESH = 5;
+    public static final int SAVE_SETUP = 6;
+    public static final int USE_SETUP = 7;
+    public static final int DELETE_SETUP = 8;
+    public static final int XP_MODE = 9;
 
     public static final Type<VillageConfigPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SccAdditions.MODID, "village_config"));
     public static final StreamCodec<RegistryFriendlyByteBuf, VillageConfigPayload> CODEC = StreamCodec.composite(
@@ -48,6 +53,11 @@ public record VillageConfigPayload(BlockPos pos, int action, int value, int extr
                     be.removeModule(player);
                     player.closeContainer();
                 }
+                case REFRESH -> be.refresh();
+                case SAVE_SETUP -> be.saveSetup();
+                case USE_SETUP -> be.useSetup(payload.value());
+                case DELETE_SETUP -> be.deleteSetup(payload.value(), player);
+                case XP_MODE -> be.setXpMode(VillageChamberBlockEntity.XpMode.values()[Math.floorMod(payload.value(), VillageChamberBlockEntity.XpMode.values().length)]);
                 default -> {
                 }
             }

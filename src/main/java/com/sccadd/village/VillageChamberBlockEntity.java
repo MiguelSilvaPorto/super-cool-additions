@@ -23,9 +23,18 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.material.Fluid;
+import net.neoforged.neoforge.fluids.FluidStack;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.entity.player.Player;
@@ -62,6 +71,21 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         PLAYER
     }
 
+    /** What happens to the experience a trade gives. */
+    public enum XpMode {
+        /** Experience fluid into the network when a mod has one, orbs otherwise. */
+        AUTO,
+        /** Always orbs, as a villager gives them. */
+        ORBS,
+        OFF
+    }
+
+    /** A villager (with its offers and levels) and the workstation it works at, kept to swap in later. */
+    public record Setup(ItemStack villager, @Nullable ResourceLocation bench) {
+    }
+
+    private static final TagKey<Fluid> EXPERIENCE = TagKey.create(Registries.FLUID, ResourceLocation.fromNamespaceAndPath("c", "experience"));
+    private static final int MB_PER_XP = 20;
     private static final int MAX_PENDING = 64;
     private static final Field LEVEL_UP_FLAG = villagerField("increaseProfessionLevelOnUpdate");
 
@@ -72,6 +96,9 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
     @Nullable
     private CompoundTag innerData;
     private Output output = Output.NETWORK;
+    private XpMode xpMode = XpMode.AUTO;
+    private final List<Setup> setups = new ArrayList<>();
+    private int lastUses = -1;
     private String state = "no module";
     private final List<ItemStack> pending = new ArrayList<>();
     /** Diagnostics only: trades cost nothing and nothing is taken from a network. */
@@ -96,9 +123,11 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         }
         if (this.inner == null) {
             BlockPos pos = this.getBlockPos();
+            Direction facing = this.getBlockState().hasProperty(BlockStateProperties.HORIZONTAL_FACING)
+                    ? this.getBlockState().getValue(BlockStateProperties.HORIZONTAL_FACING) : Direction.NORTH;
             this.inner = this.module == Module.AUTO
-                    ? new AutoTraderTileentity(pos, ModBlocks.AUTO_TRADER.get().defaultBlockState())
-                    : new TraderTileentity(pos, ModBlocks.TRADER.get().defaultBlockState());
+                    ? new AutoTraderTileentity(pos, ModBlocks.AUTO_TRADER.get().defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, facing))
+                    : new TraderTileentity(pos, ModBlocks.TRADER.get().defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, facing));
             this.inner.setFakeWorld(this.level);
             if (this.innerData != null) {
                 this.inner.loadCustomOnly(this.innerData, this.level.registryAccess());
@@ -232,6 +261,13 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             Block.popResource(level, pos, waiting);
         }
         this.pending.clear();
+        for (Setup setup : this.setups) {
+            Block.popResource(level, pos, setup.villager());
+            if (setup.bench() != null) {
+                BuiltInRegistries.ITEM.getOptional(setup.bench()).ifPresent(item -> Block.popResource(level, pos, new ItemStack(item)));
+            }
+        }
+        this.setups.clear();
         this.module = Module.NONE;
         this.inner = null;
     }
@@ -280,13 +316,14 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         TraderTileentityBase module = this.inner();
         if (module != null && module.hasVillager() && module.hasWorkstation()) {
             EasyVillagerEntity villager = module.getVillagerEntity();
-            int before = villager.getVillagerXp();
-            villager.getOffers();
-            if (before >= 0) {
-                module.saveVillagerEntity();
-                this.setChanged();
-                this.sync();
+            if (villager.getOffers().isEmpty()) {
+                // saved as an empty list (a villager never traded with): make them from the profession's tables
+                resetOffers(villager);
+                villager.getOffers();
             }
+            module.saveVillagerEntity();
+            this.setChanged();
+            this.sync();
         }
     }
 
@@ -363,6 +400,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
                 flagLevelUp(villager);
             }
             this.trades++;
+            this.rewardXp(offer, view);
             this.deliver(offer.getResult().copy(), view, player);
             done++;
         }
@@ -381,6 +419,133 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         if (player != null) {
             player.displayClientMessage(Component.literal(text), true);
         }
+    }
+
+    // ---- experience ----
+
+    public XpMode xpMode() {
+        return this.xpMode;
+    }
+
+    public void setXpMode(XpMode mode) {
+        this.xpMode = mode;
+        this.changed();
+    }
+
+    @Nullable
+    private static Fluid experienceFluid() {
+        for (Fluid fluid : BuiltInRegistries.FLUID) {
+            if (fluid.defaultFluidState().is(EXPERIENCE) && fluid.isSource(fluid.defaultFluidState())) {
+                return fluid;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * What a villager gives for a trade: experience orbs. If a mod adds an experience fluid, the
+     * experience goes into the network as that fluid instead (20 mB a point), and only what the network
+     * cannot take becomes orbs.
+     */
+    private void rewardXp(MerchantOffer offer, @Nullable NetworkView view) {
+        if (!(this.level instanceof ServerLevel server) || !offer.shouldRewardExp() || this.xpMode == XpMode.OFF) {
+            return;
+        }
+        int points = 3 + server.random.nextInt(4);
+        if (this.xpMode == XpMode.AUTO && view != null && view.online()) {
+            Fluid fluid = experienceFluid();
+            if (fluid != null) {
+                FluidStack left = view.insertFluid(new FluidStack(fluid, points * MB_PER_XP), false);
+                points = left == null ? 0 : (left.getAmount() + MB_PER_XP - 1) / MB_PER_XP;
+            }
+        }
+        if (points > 0) {
+            ExperienceOrb.award(server, Vec3.atCenterOf(this.worldPosition).add(0.0, 0.3, 0.0), points);
+        }
+    }
+
+    /** The Auto Trader trades on its own: every use it racks up on its offer gives the experience a trade gives. */
+    private void rewardAutoTrades() {
+        if (!(this.inner instanceof AutoTraderTileentity auto) || !auto.hasVillager()) {
+            this.lastUses = -1;
+            return;
+        }
+        MerchantOffer offer = auto.getOffer();
+        if (offer == null) {
+            this.lastUses = -1;
+            return;
+        }
+        int uses = offer.getUses();
+        if (this.lastUses >= 0 && uses > this.lastUses) {
+            NetworkView view = this.freeTrades ? null : this.network();
+            for (int i = this.lastUses; i < uses && i < this.lastUses + 16; i++) {
+                this.trades++;
+                this.rewardXp(offer, view);
+            }
+        }
+        this.lastUses = uses;
+    }
+
+    // ---- saved villagers: swap them in quickly ----
+
+    public List<Setup> setups() {
+        return this.setups;
+    }
+
+    /** Remembers the villager in the chamber and its workstation, leaving them where they are. */
+    public void saveSetup() {
+        TraderTileentityBase module = this.inner();
+        if (module == null || !module.hasVillager()) {
+            return;
+        }
+        module.saveVillagerEntity();
+        ResourceLocation bench = module.hasWorkstation() ? BuiltInRegistries.BLOCK.getKey(module.getWorkstation()) : null;
+        this.setups.add(new Setup(module.getVillager().copy(), bench));
+        this.changed();
+    }
+
+    /** Swaps the chamber's villager and workstation for a saved pair; what was in the chamber takes its place in the list. */
+    public void useSetup(int index) {
+        TraderTileentityBase module = this.inner();
+        if (module == null || index < 0 || index >= this.setups.size()) {
+            return;
+        }
+        Setup next = this.setups.remove(index);
+        Setup current = null;
+        if (module.hasVillager()) {
+            module.saveVillagerEntity();
+            ResourceLocation bench = module.hasWorkstation() ? BuiltInRegistries.BLOCK.getKey(module.getWorkstation()) : null;
+            current = new Setup(module.removeVillager(), bench);
+        }
+        if (module.hasWorkstation()) {
+            module.removeWorkstation();
+        }
+        module.setVillager(next.villager().copy());
+        if (next.bench() != null) {
+            Block block = BuiltInRegistries.BLOCK.get(next.bench());
+            if (module.isValidBlock(block)) {
+                module.setWorkstation(block);
+            }
+        }
+        if (current != null) {
+            this.setups.add(Math.min(index, this.setups.size()), current);
+        }
+        this.lastUses = -1;
+        this.changed();
+        this.ensureOffers();
+    }
+
+    /** Takes a saved pair out of the list and gives it to the player. */
+    public void deleteSetup(int index, Player player) {
+        if (index < 0 || index >= this.setups.size()) {
+            return;
+        }
+        Setup removed = this.setups.remove(index);
+        ItemHandlerHelper.giveItemToPlayer(player, removed.villager());
+        if (removed.bench() != null) {
+            BuiltInRegistries.ITEM.getOptional(removed.bench()).ifPresent(item -> ItemHandlerHelper.giveItemToPlayer(player, new ItemStack(item)));
+        }
+        this.changed();
     }
 
     // ---- the network ----
@@ -451,6 +616,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         module.tickServer();
         if (module instanceof AutoTraderTileentity auto) {
             auto.tick();
+            this.rewardAutoTrades();
         }
         if (this.level.getGameTime() % 20 == 7) {
             this.flushPending();
@@ -477,6 +643,21 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         } catch (ReflectiveOperationException | RuntimeException missing) {
             return null;
         }
+    }
+
+    private static void resetOffers(EasyVillagerEntity villager) {
+        try {
+            Field field = net.minecraft.world.entity.npc.AbstractVillager.class.getDeclaredField("offers");
+            field.setAccessible(true);
+            field.set(villager, null);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // keep what it has
+        }
+    }
+
+    /** Called by the window while it has no offers to show: have the server make and send them. */
+    public void refresh() {
+        this.ensureOffers();
     }
 
     private static boolean shouldLevelUp(EasyVillagerEntity villager) {
@@ -556,7 +737,18 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             }
         }
         tag.putString("sccadd_output", this.output.name());
+        tag.putString("sccadd_xp", this.xpMode.name());
         tag.putString("sccadd_state", this.state);
+        ListTag saved = new ListTag();
+        for (Setup setup : this.setups) {
+            CompoundTag entry = new CompoundTag();
+            entry.put("villager", setup.villager().save(provider));
+            if (setup.bench() != null) {
+                entry.putString("bench", setup.bench().toString());
+            }
+            saved.add(entry);
+        }
+        tag.put("sccadd_setups", saved);
         ListTag list = new ListTag();
         for (ItemStack stack : this.pending) {
             list.add(stack.save(provider));
@@ -578,6 +770,20 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             this.output = Output.valueOf(tag.getString("sccadd_output"));
         } catch (IllegalArgumentException unknown) {
             this.output = Output.NETWORK;
+        }
+        try {
+            this.xpMode = XpMode.valueOf(tag.getString("sccadd_xp"));
+        } catch (IllegalArgumentException unknown) {
+            this.xpMode = XpMode.AUTO;
+        }
+        this.setups.clear();
+        ListTag saved = tag.getList("sccadd_setups", Tag.TAG_COMPOUND);
+        for (int i = 0; i < saved.size(); i++) {
+            CompoundTag entry = saved.getCompound(i);
+            ItemStack stack = ItemStack.parseOptional(provider, entry.getCompound("villager"));
+            if (!stack.isEmpty()) {
+                this.setups.add(new Setup(stack, entry.contains("bench") ? ResourceLocation.tryParse(entry.getString("bench")) : null));
+            }
         }
         this.state = tag.contains("sccadd_state") ? tag.getString("sccadd_state") : "no module";
         this.pending.clear();
