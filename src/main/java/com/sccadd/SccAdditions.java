@@ -43,6 +43,7 @@ public final class SccAdditions {
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(SccPatternsPayload.TYPE, SccPatternsPayload.CODEC, SccPatternsPayload::handle);
+        registrar.playToServer(com.sccadd.chain.ChainPayload.TYPE, com.sccadd.chain.ChainPayload.CODEC, com.sccadd.chain.ChainPayload::handle);
         registrar.playToServer(SlotRulesPayload.TYPE, SlotRulesPayload.CODEC, SlotRulesPayload::handle);
         registrar.playToServer(RequesterTargetPayload.TYPE, RequesterTargetPayload.CODEC, RequesterTargetPayload::handle);
         registrar.playToServer(SlotStock.Request.TYPE, SlotStock.Request.CODEC, SlotStock.Request::handle);

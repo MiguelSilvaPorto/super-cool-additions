@@ -1,11 +1,15 @@
 package com.sccadd.mixin;
 
 import com.sccadd.SccAddConfig;
+import com.sccadd.chain.ChainData;
+import com.sccadd.chain.ChainHolder;
+import com.sccadd.chain.ChainRunner;
 import com.sccadd.requester.BigRow;
 import com.sccadd.requester.RequesterTargetPayload;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.network.NetworkView;
 import de.scc.calculator.network.RequesterBlockEntity;
+import de.scc.calculator.network.TerminalBlockEntity;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -13,6 +17,7 @@ import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -28,10 +33,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * its "how much is missing" stay exact for any target up to nine quadrillion.</p>
  */
 @Mixin(value = RequesterBlockEntity.class, remap = false)
-public abstract class RequesterBlockEntityMixin {
+public abstract class RequesterBlockEntityMixin implements ChainHolder {
     @Shadow
     @Final
     private RequesterBlockEntity.Row[] rows;
+
+    @Unique
+    private final ChainData[] sccadd$chains = new ChainData[6];
+    @Unique
+    private final ChainRunner[] sccadd$runners = {new ChainRunner(), new ChainRunner(), new ChainRunner(),
+            new ChainRunner(), new ChainRunner(), new ChainRunner()};
+
+    @Shadow
+    protected abstract TerminalBlockEntity firstTerminal(NetworkView view);
 
     @Shadow
     protected abstract long stockOf(NetworkView view, RequesterBlockEntity.Row row);
@@ -43,6 +57,7 @@ public abstract class RequesterBlockEntityMixin {
             return;
         }
         RequesterBlockEntity.Row row = this.rows[Math.max(0, Math.min(5, index))];
+        this.sccadd$chains[Math.max(0, Math.min(5, index))] = null;
         row.enabled = false;
         row.state = "off";
         row.nextAt = 0L;
@@ -77,6 +92,13 @@ public abstract class RequesterBlockEntityMixin {
             return 0L;
         }
         return Math.max(0L, ((BigRow) (Object) row).sccadd$bigAmount() - row.amount);
+    }
+
+    @Inject(method = "clearRow", at = @At("TAIL"), require = 0)
+    private void sccadd$clearChain(int index, CallbackInfo ci) {
+        if (index >= 0 && index < 6) {
+            this.sccadd$chains[index] = null;
+        }
     }
 
     @Redirect(method = "tickRequests", at = @At(value = "INVOKE",
@@ -119,6 +141,106 @@ public abstract class RequesterBlockEntityMixin {
             if (entry.contains("sccadd_interval")) {
                 ((BigRow) (Object) this.rows[i]).sccadd$setIntervalSeconds(entry.getLong("sccadd_interval"));
             }
+        }
+    }
+
+    @Override
+    public ChainData sccadd$chain(int row) {
+        return row >= 0 && row < 6 ? this.sccadd$chains[row] : null;
+    }
+
+    @Override
+    public void sccadd$setChain(int row, ChainData chain) {
+        if (row < 0 || row >= 6) {
+            return;
+        }
+        this.sccadd$chains[row] = chain == null || chain.isEmpty() ? null : chain;
+        this.sccadd$runners[row] = new ChainRunner();
+        if (this.sccadd$chains[row] != null) {
+            // the first box is the start and the goal of the chain: the row shows its item
+            for (ChainData.Node node : this.sccadd$chains[row].flow()) {
+                StackKey key = node.item.isEmpty() ? null : StackKey.decode(node.item);
+                if (key != null) {
+                    this.rows[row].item = key;
+                }
+                break;
+            }
+        }
+        ((RequesterBlockEntity) (Object) this).setChanged();
+        ((NetworkBlockEntityInvoker) (Object) this).sccadd$sync();
+    }
+
+    @Unique
+    private boolean sccadd$chained(RequesterBlockEntity.Row row) {
+        for (int i = 0; i < 6; i++) {
+            if (this.rows[i] == row && this.sccadd$chains[i] != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A row that has a chain is driven by the chain, not by SCC's own stock/order logic. */
+    @Redirect(method = "tickRequests", at = @At(value = "FIELD",
+            target = "Lde/scc/calculator/network/RequesterBlockEntity$Row;enabled:Z", opcode = Opcodes.GETFIELD), require = 0)
+    private boolean sccadd$chainOwnsRow(RequesterBlockEntity.Row row) {
+        return row.enabled && !this.sccadd$chained(row);
+    }
+
+    /** ...and SCC must not write its own state over the chain's. */
+    @Redirect(method = "tickRequests", at = @At(value = "FIELD",
+            target = "Lde/scc/calculator/network/RequesterBlockEntity$Row;state:Ljava/lang/String;", opcode = Opcodes.PUTFIELD), require = 0)
+    private void sccadd$keepChainState(RequesterBlockEntity.Row row, String value) {
+        if (!this.sccadd$chained(row)) {
+            row.state = value;
+        }
+    }
+
+    @Inject(method = "tickRequests", at = @At("RETURN"), require = 0)
+    private void sccadd$runChains(CallbackInfo ci) {
+        RequesterBlockEntity self = (RequesterBlockEntity) (Object) this;
+        if (self.getLevel() == null || self.getLevel().isClientSide || self.getLevel().getGameTime() % 20 != 7) {
+            return;
+        }
+        NetworkView view = self.network();
+        if (view == null || !view.online()) {
+            return;
+        }
+        TerminalBlockEntity terminal = null;
+        boolean changed = false;
+        for (int i = 0; i < 6; i++) {
+            ChainData chain = this.sccadd$chains[i];
+            RequesterBlockEntity.Row row = this.rows[i];
+            if (chain == null || !row.enabled) {
+                continue;
+            }
+            if (terminal == null) {
+                terminal = this.firstTerminal(view);
+            }
+            String before = row.state;
+            this.sccadd$runners[i].tick(row, chain, view, terminal, self.getLevel().getGameTime(), self.getBlockPos().toShortString() + "#" + i);
+            changed |= !java.util.Objects.equals(before, row.state);
+        }
+        if (changed) {
+            ((NetworkBlockEntityInvoker) (Object) this).sccadd$sync();
+        }
+    }
+
+    @Inject(method = "saveAdditional", at = @At("TAIL"), require = 0)
+    private void sccadd$saveChains(CompoundTag tag, HolderLookup.Provider registries, CallbackInfo ci) {
+        ListTag list = new ListTag();
+        for (int i = 0; i < 6; i++) {
+            list.add(this.sccadd$chains[i] == null ? new CompoundTag() : this.sccadd$chains[i].save());
+        }
+        tag.put("sccadd_chains", list);
+    }
+
+    @Inject(method = "loadAdditional", at = @At("TAIL"), require = 0)
+    private void sccadd$loadChains(CompoundTag tag, HolderLookup.Provider registries, CallbackInfo ci) {
+        ListTag list = tag.getList("sccadd_chains", 10);
+        for (int i = 0; i < 6; i++) {
+            ChainData chain = i < list.size() ? ChainData.load(list.getCompound(i)) : null;
+            this.sccadd$chains[i] = chain == null || chain.isEmpty() ? null : chain;
         }
     }
 }

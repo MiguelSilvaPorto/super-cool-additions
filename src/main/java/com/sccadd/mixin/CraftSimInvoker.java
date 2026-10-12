@@ -19,4 +19,20 @@ public interface CraftSimInvoker {
     static int sccadd$reach(StackKey item, RecipeBook book, @Nullable ItemGraph graph, @Nullable Map<StackKey, Long> stock) {
         throw new AssertionError();
     }
+
+    @Invoker("machineFor")
+    static String sccadd$machineFor(de.scc.calculator.calc.SccRecipe recipe, RecipeBook book) {
+        throw new AssertionError();
+    }
+
+    @Invoker("fluidsOf")
+    static java.util.List<de.scc.calculator.network.CraftStep.Fluid> sccadd$fluidsOf(de.scc.calculator.calc.SccRecipe recipe) {
+        throw new AssertionError();
+    }
+
+    @Invoker("returnsOf")
+    static java.util.List<de.scc.calculator.network.CraftStep.Ing> sccadd$returnsOf(de.scc.calculator.calc.SccRecipe recipe,
+            java.util.List<de.scc.calculator.network.CraftStep.Ing> inputs) {
+        throw new AssertionError();
+    }
 }

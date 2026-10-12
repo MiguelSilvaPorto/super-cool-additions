@@ -30,6 +30,7 @@
   "client": [
     "client.CraftSimAe2Mixin",
     "client.InterfaceScreenFluidMixin",
+    "client.RequesterChainMixin",
     "client.CustomRecipeBookMixin",
     "client.Ae2TerminalScreenMixin",
     "client.Ae2OfferPatternsMixin",
