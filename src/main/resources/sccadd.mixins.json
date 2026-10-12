@@ -31,7 +31,10 @@
     "client.AnalysisFingerprintMixin",
     "client.TerminalBarEntryAccess",
     "client.TerminalBarLayoutMixin",
+    "client.TerminalBarAccess",
+    "client.TerminalScreenBarEditMixin",
     "client.TerminalListVariantMixin",
+    "client.ItemBatchGhostMixin",
     "RequesterPlannerInvoker",
     "CraftSimInvoker"
   ],

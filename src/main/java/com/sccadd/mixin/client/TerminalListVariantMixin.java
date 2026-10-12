@@ -36,7 +36,8 @@ public abstract class TerminalListVariantMixin {
     private static void sccadd$cleanVariants(TerminalBlockEntity be, String query, de.scc.calculator.client.screen.SortMode sort,
                                              boolean showCraftable, boolean onlyAvailable, int[] simBudget,
                                              CallbackInfoReturnable<List<TerminalBlockEntity.Entry>> cir) {
-        if (!SccAddConfig.cleanVariants()) {
+        com.sccadd.client.AdvancedFilter advanced = com.sccadd.client.AdvancedFilter.get();
+        if (!SccAddConfig.cleanVariants() && !advanced.active()) {
             return;
         }
         List<TerminalBlockEntity.Entry> in = cir.getReturnValue();
@@ -45,8 +46,9 @@ public abstract class TerminalListVariantMixin {
         }
         List<TerminalBlockEntity.Entry> out = new ArrayList<>(in.size());
         for (TerminalBlockEntity.Entry entry : in) {
-            if (entry.count() > 0L || entry.fluid() != null || entry.isChemical() || entry.isSoul() || entry.isSource()
-                    || !noisy(entry)) {
+            boolean keep = !SccAddConfig.cleanVariants() || entry.count() > 0L || entry.fluid() != null
+                    || entry.isChemical() || entry.isSoul() || entry.isSource() || !noisy(entry);
+            if (keep && advanced.accept(entry)) {
                 out.add(entry);
             }
         }
