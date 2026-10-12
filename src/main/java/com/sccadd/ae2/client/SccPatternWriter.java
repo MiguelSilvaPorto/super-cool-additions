@@ -7,6 +7,7 @@ import de.scc.calculator.calc.SccRecipe;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.client.screen.CraftSim;
 import de.scc.calculator.network.CraftStep;
+import de.scc.calculator.SccLog;
 import com.sccadd.SccAddConfig;
 import com.sccadd.mixin.CraftSimInvoker;
 import com.sccadd.mixin.RequesterPlannerInvoker;
@@ -61,20 +62,26 @@ public final class SccPatternWriter {
         }
         RecipeBook book = AnalysisManager.get().book();
         ItemGraph graph = AnalysisManager.get().graph();
-        String stockText = STOCK.get();
-        if (book == null || graph == null || stockText == null || stockText.isBlank()) {
+        if (book == null || graph == null) {
             return offerText;
         }
+        String stockText = STOCK.get();
         Map<StackKey, Long> stock;
         try {
-            stock = RequesterPlannerInvoker.sccadd$parseStock(stockText);
+            // An empty stock text means the network has nothing - then nothing is
+            // possible, and the offer has to become empty too.
+            stock = stockText == null || stockText.isBlank()
+                    ? Map.of()
+                    : RequesterPlannerInvoker.sccadd$parseStock(stockText);
         } catch (Throwable failed) {
             return offerText;
         }
         if (stock == null) {
-            return offerText;
+            stock = Map.of();
         }
         StringBuilder out = new StringBuilder(offerText.length());
+        int kept = 0;
+        int total = 0;
         for (String line : offerText.split("\n")) {
             if (line.isBlank()) {
                 continue;
@@ -84,14 +91,18 @@ public final class SccPatternWriter {
                 out.append(line).append('\n');
                 continue;
             }
+            total++;
             try {
                 if (CraftSimInvoker.sccadd$reach(key, book, graph, stock) <= 5) {
                     out.append(line).append('\n');
+                    kept++;
                 }
             } catch (Throwable failed) {
                 out.append(line).append('\n');
+                kept++;
             }
         }
+        SccLog.info("sccadd", "offer filtered by stock: " + kept + " of " + total + " item(s) are buildable now");
         return out.toString();
     }
 
