@@ -11,6 +11,7 @@
     "Ae2ProviderPatternsMixin",
     "Ae2NodePatternsMixin",
     "Ae2ProviderDebugMixin",
+    "Ae2ProviderDeliverMixin",
     "PlannerPickMixin",
     "PlanAnswerMixin",
     "Ae2ReceiverTickMixin",

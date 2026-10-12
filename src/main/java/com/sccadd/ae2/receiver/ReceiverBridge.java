@@ -1,6 +1,5 @@
 package com.sccadd.ae2.receiver;
 
-import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.GridHelper;
 import appeng.api.networking.IGrid;
@@ -10,7 +9,6 @@ import appeng.api.networking.IInWorldGridNodeHost;
 import appeng.api.networking.IManagedGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingService;
-import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
@@ -18,17 +16,16 @@ import appeng.api.storage.IStorageMounts;
 import appeng.api.storage.IStorageProvider;
 import appeng.api.storage.MEStorage;
 import com.sccadd.SccAddConfig;
+import com.sccadd.ae2.SccAe2Delivery;
 import com.sccadd.ae2.SccAe2PatternStore;
 import com.sccadd.ae2.SccAe2Patterns;
 import com.sccadd.ae2.SccAe2Recipe;
 import com.sccadd.ae2.SccMeStorage;
 import de.scc.calculator.SccLog;
 import de.scc.calculator.calc.StackKey;
-import de.scc.calculator.compat.BridgeGuard;
 import de.scc.calculator.network.FuelOrders;
 import de.scc.calculator.network.NetworkView;
 import de.scc.calculator.network.SccRegistry;
-import de.scc.calculator.network.TerminalBlockEntity;
 import de.scc.calculator.network.WirelessReceiverBlockEntity;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -54,16 +51,16 @@ import org.jetbrains.annotations.Nullable;
 public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvider, ICraftingProvider,
         IGridNodeListener<ReceiverBridge> {
     private static final int CHECK_TICKS = 20;
-    private static final int ASK_MIN_TICKS = 1_200;
+    private static final int ASK_MIN_TICKS = 2_400;
 
     private final WirelessReceiverBlockEntity be;
     private final IManagedGridNode main;
     private final SccMeStorage storage;
-    private final IActionSource source = IActionSource.empty();
     private Map<AEKey, StackKey> offer = Map.of();
     private Set<AEKey> emitted = Set.of();
     private int timer;
     private long askedAt = Long.MIN_VALUE;
+    private long lastPatternLog;
     private boolean created;
 
     ReceiverBridge(WirelessReceiverBlockEntity be) {
@@ -110,12 +107,28 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
 
     @Override
     public List<IPatternDetails> getAvailablePatterns() {
-        return SccAe2PatternStore.patterns(this.be);
+        List<IPatternDetails> patterns = SccAe2PatternStore.patterns(this.be);
+        if (SccAddConfig.ae2DebugOffer()) {
+            long now = System.currentTimeMillis();
+            if (now - this.lastPatternLog >= 5_000L) {
+                this.lastPatternLog = now;
+                SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
+                        + ": AE2 asked for patterns -> " + patterns.size());
+            }
+        }
+        return patterns;
     }
 
     @Override
     public boolean pushPattern(IPatternDetails pattern, KeyCounter[] inputs) {
         Boolean result = SccAe2Patterns.push(this.be, SccAe2PatternStore.recipes(this.be), pattern, inputs);
+        if (SccAddConfig.ae2DebugOffer()) {
+            String what = pattern.getPrimaryOutput() == null
+                    ? "?"
+                    : pattern.getPrimaryOutput().what().getDisplayName().getString();
+            SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
+                    + ": AE2 pushed a pattern for " + what + " -> " + (result != null && result ? "accepted" : "refused"));
+        }
         return result != null && result;
     }
 
@@ -199,12 +212,17 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
                 + recipes.size() + " pattern(s)");
     }
 
+    /**
+     * Hands finished items to waiting AE2 jobs. Covers <em>every</em> offered key:
+     * emitable ones (AE2 waits for the provider to deliver) and pattern ones
+     * (AE2 pushed the ingredients, but still waits for the output).
+     */
     private void service(ServerLevel level, IGrid grid, ICraftingService crafting, NetworkView view) {
-        if (this.emitted.isEmpty()) {
+        if (this.offer.isEmpty()) {
             return;
         }
         MEStorage inventory = grid.getStorageService().getInventory();
-        for (AEKey key : this.emitted) {
+        for (AEKey key : this.offer.keySet()) {
             if (!(key instanceof AEItemKey item) || !crafting.isRequesting(key)) {
                 continue;
             }
@@ -214,60 +232,8 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             }
             long want = crafting.getRequestedAmount(key);
             if (want > 0L) {
-                this.deliver(level, inventory, view, item, wanted, want);
+                SccAe2Delivery.deliver(level, inventory, view, this.be, item, wanted, want);
             }
         }
-    }
-
-    private long deliver(ServerLevel level, MEStorage inventory, NetworkView view, AEItemKey key, StackKey wanted, long want) {
-        if (view.free(wanted) <= 0L) {
-            return 0L;
-        }
-        ItemStack template = key.toStack();
-        int max = Math.max(1, template.getMaxStackSize());
-        long done = 0L;
-        while (done < want) {
-            int batch = (int) Math.min((long) max, want - done);
-            BridgeGuard.enter();
-            long fits;
-            try {
-                fits = inventory.insert(key, batch, Actionable.SIMULATE, this.source);
-            } finally {
-                BridgeGuard.leave();
-            }
-            if (fits <= 0L) {
-                break;
-            }
-            ItemStack got = view.extractFree(wanted, (int) Math.min((long) batch, fits), false);
-            if (got.isEmpty()) {
-                break;
-            }
-            if (!ItemStack.isSameItemSameComponents(got, template)) {
-                view.giveBack(got, level, this.be.getBlockPos());
-                break;
-            }
-            BridgeGuard.enter();
-            long in;
-            try {
-                in = inventory.insert(key, got.getCount(), Actionable.MODULATE, this.source);
-            } finally {
-                BridgeGuard.leave();
-            }
-            if (in < got.getCount()) {
-                view.giveBack(got.copyWithCount(got.getCount() - (int) in), level, this.be.getBlockPos());
-            }
-            done += in;
-            if (in < batch) {
-                break;
-            }
-        }
-        if (done > 0L) {
-            TerminalBlockEntity terminal = view.terminalNear(level);
-            if (terminal != null) {
-                terminal.requestRefresh();
-            }
-            SccLog.info("sccadd", "receiver bridge delivered " + done + "x " + key.getDisplayName().getString() + " to the waiting AE2 job");
-        }
-        return done;
     }
 }

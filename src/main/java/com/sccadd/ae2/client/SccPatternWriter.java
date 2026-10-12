@@ -14,8 +14,8 @@ import de.scc.calculator.network.CraftStep;
  * decode, so old servers stay compatible.
  */
 public final class SccPatternWriter {
-    public static final int MAX_PATTERNS = 400;
-    public static final int MAX_CHARS = 96_000;
+    public static final int MAX_PATTERNS = 4_000;
+    public static final int MAX_CHARS = 1_500_000;
     public static final int MAX_INPUTS = 12;
     public static final int MAX_OPTIONS = 12;
 
