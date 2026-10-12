@@ -9,13 +9,20 @@ import de.scc.calculator.client.screen.SccContainerScreen;
 import de.scc.calculator.client.screen.SccGui;
 import de.scc.calculator.client.screen.SccTextInput;
 import de.scc.calculator.network.SccTier;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.npc.VillagerProfession;
+import net.minecraft.world.entity.npc.VillagerType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
@@ -48,6 +55,8 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
     private boolean naming;
     private int keepEditing = -1;
     private String typed = "";
+    /** The villagers drawn in the Cycle cards, built from what the server sent and kept between frames. */
+    private final Map<String, EasyVillagerEntity> cardEntities = new HashMap<>();
 
     public VillageScreen(VillageMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -83,6 +92,32 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
     private EasyVillagerEntity entity() {
         return Minecraft.getInstance().level != null
                 && Minecraft.getInstance().level.getBlockEntity(this.menu.pos()) instanceof VillageChamberBlockEntity be ? be.villager() : null;
+    }
+
+    /** The villager a Cycle card shows, built from what the server sent (the client never reads the item itself). */
+    @Nullable
+    private EasyVillagerEntity cardEntity(VillageView.Villager card) {
+        var level = Minecraft.getInstance().level;
+        if (level == null) {
+            return null;
+        }
+        String key = card.code() + "|" + card.professionId() + "|" + card.type() + "|" + card.level();
+        EasyVillagerEntity cached = this.cardEntities.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        if (this.cardEntities.size() > 64) {
+            this.cardEntities.clear();
+        }
+        EasyVillagerEntity entity = new EasyVillagerEntity(EntityType.VILLAGER, level);
+        VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION
+                .getOptional(ResourceLocation.tryParse(card.professionId())).orElse(VillagerProfession.NONE);
+        VillagerType type = BuiltInRegistries.VILLAGER_TYPE
+                .getOptional(ResourceLocation.tryParse(card.type())).orElse(VillagerType.PLAINS);
+        entity.setVillagerData(entity.getVillagerData().setProfession(profession).setType(type)
+                .setLevel(Math.max(1, Math.min(card.level(), 5))));
+        this.cardEntities.put(key, entity);
+        return entity;
     }
 
     // ---- layout ----
@@ -595,13 +630,19 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> impleme
     /** One villager waiting in the system: its name, its level, and a preview of what it trades. */
     private void drawCard(GuiGraphics g, VillageView.Villager card, int x, int y, int w, int mouseX, int mouseY) {
         g.fill(x, y, x + w, y + CARD_H - 3, SccGui.PLATE_BG);
+        // the villager itself, in 3D: profession clothes, level badge and all
+        EasyVillagerEntity entity = this.cardEntity(card);
+        if (entity != null) {
+            InventoryScreen.renderEntityInInventoryFollowsMouse(g, x + 3, y + 1, x + 31, y + CARD_H - 7, 22, 0.0625F,
+                    mouseX < 0 ? x + 17.0F : mouseX, mouseY < 0 ? y + 22 : mouseY, entity);
+        }
         String head = card.name() + "  ·  " + card.profession() + " lvl " + card.level() + (card.count() > 1 ? "  x" + card.count() : "");
-        g.drawString(this.font, this.font.plainSubstrByWidth(head, w - 108), x + 6, y + 5, SccGui.TEXT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(head, w - 140), x + 36, y + 5, SccGui.TEXT, false);
         // the trades it already has, as cost -> result
         if (card.offers().isEmpty()) {
-            g.drawString(this.font, "no trades made yet", x + 6, y + 24, SccGui.MUTED, false);
+            g.drawString(this.font, "no trades made yet", x + 36, y + 24, SccGui.MUTED, false);
         }
-        int ix = x + 6;
+        int ix = x + 36;
         int shown = 0;
         for (MerchantOffer offer : card.offers()) {
             if (shown >= 4) {

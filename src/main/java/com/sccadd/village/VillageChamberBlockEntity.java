@@ -792,6 +792,8 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             return null;
         }
         String profession = "villager";
+        String professionId = "minecraft:none";
+        String type = "minecraft:plains";
         int level = 1;
         String name = stack.getHoverName().getString();
         List<MerchantOffer> offers = new ArrayList<>();
@@ -799,6 +801,8 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             EasyVillagerEntity entity = VillagerData.createEasyVillager(stack, this.level);
             net.minecraft.world.entity.npc.VillagerData data = entity.getVillagerData();
             profession = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).getPath().replace('_', ' ');
+            professionId = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).toString();
+            type = BuiltInRegistries.VILLAGER_TYPE.getKey(data.getType()).toString();
             level = data.getLevel();
             if (entity.hasCustomName()) {
                 name = entity.getCustomName().getString();
@@ -813,7 +817,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // show what we have
         }
-        return new VillageView.Villager(code, name, profession, level, count, offers);
+        return new VillageView.Villager(code, name, profession, professionId, type, level, count, offers);
     }
 
     // ---- villagers and workstations in the system: swap them in quickly ----

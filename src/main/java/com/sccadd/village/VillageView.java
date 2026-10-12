@@ -40,7 +40,8 @@ public record VillageView(
         int villagerEnergy) {
 
     /** A villager item in the system. */
-    public record Villager(String code, String name, String profession, int level, int count, List<MerchantOffer> offers) {
+    public record Villager(String code, String name, String profession, String professionId, String type, int level, int count,
+                           List<MerchantOffer> offers) {
     }
 
     /** A workstation item in the system. */
@@ -83,6 +84,8 @@ public record VillageView(
             buf.writeUtf(villager.code, 1024);
             buf.writeUtf(villager.name);
             buf.writeUtf(villager.profession);
+            buf.writeUtf(villager.professionId);
+            buf.writeUtf(villager.type);
             buf.writeVarInt(villager.level);
             buf.writeVarInt(villager.count);
             writeOffers(buf, villager.offers);
@@ -124,7 +127,8 @@ public record VillageView(
         int villagerCount = buf.readVarInt();
         List<Villager> villagers = new ArrayList<>(villagerCount);
         for (int i = 0; i < villagerCount; i++) {
-            villagers.add(new Villager(buf.readUtf(1024), buf.readUtf(), buf.readUtf(), buf.readVarInt(), buf.readVarInt(), readOffers(buf)));
+            villagers.add(new Villager(buf.readUtf(1024), buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readUtf(), buf.readVarInt(),
+                    buf.readVarInt(), readOffers(buf)));
         }
         int benchCount = buf.readVarInt();
         List<Bench> benches = new ArrayList<>(benchCount);
