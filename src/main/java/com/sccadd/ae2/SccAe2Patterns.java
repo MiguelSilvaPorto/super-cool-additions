@@ -8,7 +8,7 @@ import appeng.api.stacks.KeyCounter;
 import de.scc.calculator.SccLog;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.network.FuelOrders;
-import de.scc.calculator.network.NetworkAntennaBlockEntity;
+import de.scc.calculator.network.NetworkBlockEntity;
 import de.scc.calculator.network.NetworkView;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.ArrayList;
@@ -72,7 +72,7 @@ public final class SccAe2Patterns {
      *         otherwise whether the job was accepted.
      */
     @Nullable
-    public static Boolean push(NetworkAntennaBlockEntity be, List<SccAe2Recipe> recipes,
+    public static Boolean push(NetworkBlockEntity be, List<SccAe2Recipe> recipes,
                                IPatternDetails pattern, KeyCounter[] inputs) {
         GenericStack primary = pattern.getPrimaryOutput();
         if (primary == null || !(primary.what() instanceof AEItemKey outputItem)) {

@@ -12,7 +12,9 @@
     "Ae2NodePatternsMixin",
     "Ae2ProviderDebugMixin",
     "PlannerPickMixin",
-    "PlanAnswerMixin"
+    "PlanAnswerMixin",
+    "Ae2ReceiverTickMixin",
+    "Ae2ReceiverRemoveMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",

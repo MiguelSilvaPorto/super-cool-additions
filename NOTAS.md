@@ -91,6 +91,16 @@ escolhe exatamente qual rede SCC conversa com qual rede AE2.
       escolher quem fica no fluxo.
 - [ ] Garantir que dois pares (duas redes SCC × dois AE2) não se misturem.
 
+**FLUXO DESEJADO (usuário, confirmar):**
+1. AE2 pede um item ("faça isso").
+2. SCC calcula o plano e **o que vai consumir**.
+3. O plano é apresentado no **preview de fabricação do AE2** (padrões com
+   ingredientes já expostos pelo addon) para o jogador **aprovar**.
+4. Aprovado → o AE2 empurra os ingredientes → **job SCC roda**.
+5. Resultado volta para o ME pela ponte.
+→ É o comportamento natural do AE2 com padrões reais; a ponte do receptor deve
+   entregar exatamente isso (sem o fluxo indireto de "perguntar pro cliente").
+
 **Investigação já feita (AE2 19.2.18):**
 - Existe `appeng.api.AECapabilities.ME_STORAGE` (`BlockCapability<MEStorage, Direction>`)
   — é o que o Storage Bus consulta no bloco alvo.

@@ -19,6 +19,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue AE2_PATTERNS_IN_SCC;
     public static final ModConfigSpec.BooleanValue SCC_PATTERNS_IN_AE2;
     public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
+    public static final ModConfigSpec.BooleanValue AE2_BRIDGE_ON_RECEIVER;
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
@@ -86,6 +87,12 @@ public final class SccAddConfig {
                 .comment("Write the state of the 'what can SCC build' offer to logs/scc.log every 5 seconds.",
                         "Diagnosis aid: shows active/cpus/terminal/offer/emitted. Turn off when done.")
                 .define("debugOffer", true);
+
+        AE2_BRIDGE_ON_RECEIVER = builder
+                .comment("The Wireless Receiver acts as an AE2 bridge, like the Network Antenna.",
+                        "Put the receiver next to the AE2 network: it mounts the SCC network as ME storage",
+                        "and offers the SCC recipes as real patterns - no antenna needed.")
+                .define("bridgeOnReceiver", true);
 
         builder.pop();
 
@@ -158,6 +165,10 @@ public final class SccAddConfig {
 
     public static boolean ae2DebugOffer() {
         return AE2_DEBUG_OFFER.get();
+    }
+
+    public static boolean bridgeOnReceiver() {
+        return AE2_BRIDGE_ON_RECEIVER.get();
     }
 
     public static boolean smartPlanner() {
