@@ -25,7 +25,7 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * The Interface in a small body, like AE2's: a plate with a short stub, still all nine slots, the tanks and the
+ * The Interface in a small body, like AE2's: a thin flat plate against the back of its block, still all nine slots, the tanks and the
  * same window. It is SCC's own Interface block with another shape and model; its block entity is the Interface's
  * (the block is added to that type's valid blocks), so everything that works on an Interface works on this.
  */
@@ -39,7 +39,7 @@ public final class CompactInterface extends InterfaceBlock {
             () -> new CompactInterface(BlockBehaviour.Properties.ofFullCopy(SccRegistry.INTERFACE.get()).noOcclusion()));
     public static final DeferredItem<BlockItem> ITEM = ITEMS.registerSimpleBlockItem("interface_compact", BLOCK);
 
-    private static final VoxelShape NORTH = Shapes.or(Block.box(2, 2, 6, 14, 14, 9), Block.box(4, 4, 9, 12, 12, 16));
+    private static final VoxelShape NORTH = Block.box(2, 2, 13, 14, 14, 16);
     private static final VoxelShape EAST = turn(NORTH);
     private static final VoxelShape SOUTH = turn(EAST);
     private static final VoxelShape WEST = turn(SOUTH);
