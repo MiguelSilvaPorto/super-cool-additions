@@ -26,10 +26,18 @@ public final class SccAdditions {
     public SccAdditions(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, SccAddConfig.SPEC);
         modBus.addListener(SccAdditions::registerPayloads);
+        modBus.addListener(SccAdditions::registerCapabilities);
         if (ModList.get().isLoaded("ae2")) {
             // Loaded only when AE2 is present; the class references AE2 types.
             com.sccadd.ae2.Ae2BridgeRegister.init(modBus);
         }
+    }
+
+    private static void registerCapabilities(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(
+                net.neoforged.neoforge.capabilities.Capabilities.FluidHandler.BLOCK,
+                de.scc.calculator.network.SccRegistry.INTERFACE_BE.get(),
+                (be, side) -> ((com.sccadd.iface.TankHolder) be).sccadd$tanks());
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {

@@ -3,6 +3,7 @@ package com.sccadd.mixin;
 import com.sccadd.SccAddConfig;
 import com.sccadd.requester.BigRow;
 import com.sccadd.requester.RequesterTargetPayload;
+import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.network.NetworkView;
 import de.scc.calculator.network.RequesterBlockEntity;
 import net.minecraft.core.HolderLookup;
@@ -34,6 +35,21 @@ public abstract class RequesterBlockEntityMixin {
 
     @Shadow
     protected abstract long stockOf(NetworkView view, RequesterBlockEntity.Row row);
+
+    /** Whatever is put into a row starts switched off: you set the numbers first, then turn it on. */
+    @Inject(method = "setItem", at = @At("TAIL"), require = 0)
+    private void sccadd$startOff(int index, StackKey item, CallbackInfo ci) {
+        if (item == null) {
+            return;
+        }
+        RequesterBlockEntity.Row row = this.rows[Math.max(0, Math.min(5, index))];
+        row.enabled = false;
+        row.state = "off";
+        row.nextAt = 0L;
+        row.period = 0;
+        ((RequesterBlockEntity) (Object) this).setChanged();
+        ((NetworkBlockEntityInvoker) (Object) this).sccadd$sync();
+    }
 
     @ModifyConstant(method = "setAmount", constant = @Constant(intValue = 9999), require = 0)
     private int sccadd$amountMax(int original) {

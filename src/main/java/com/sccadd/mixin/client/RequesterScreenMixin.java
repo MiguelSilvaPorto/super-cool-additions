@@ -13,6 +13,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -32,8 +33,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class RequesterScreenMixin {
     private static final int TARGET_X = 92;
     private static final int TARGET_W = 54;
-    private static final int TIME_X = 147;
-    private static final int TIME_W = 46;
+    /** Left to right: stock to keep, amount per order, time between orders. */
+    private static final int BATCH_X = 147;
+    private static final int BATCH_W = 46;
+    private static final int TIME_X = 194;
+    private static final int TIME_W = 30;
 
     @Shadow
     private int batchFocus;
@@ -46,6 +50,16 @@ public abstract class RequesterScreenMixin {
 
     @Shadow
     protected abstract boolean rowEmpty(int row);
+
+    @Shadow
+    private int[][] batchBounds;
+
+    @Shadow
+    @Final
+    private java.util.List<de.scc.calculator.client.screen.SccButton> buttons;
+
+    @Shadow
+    protected abstract String batchLabel(int row);
 
     @Unique
     private int sccadd$focus = -1;
@@ -123,6 +137,17 @@ public abstract class RequesterScreenMixin {
         long value = BigMath.eval(text);
         if (value != BigMath.INVALID) {
             this.sccadd$send(row, Math.max(1L, Math.min(BigMath.MAX, value)), -1L);
+        }
+    }
+
+    /** The "-", "+", "<" and ">" buttons are replaced by fields: park them off screen, and move the order size field. */
+    @Inject(method = "buildButtons", at = @At("TAIL"), require = 0)
+    private void sccadd$layout(CallbackInfo ci) {
+        for (de.scc.calculator.client.screen.SccButton button : this.buttons) {
+            button.bounds(-2000, -2000, 12, 13);
+        }
+        for (int i = 0; i < 6; i++) {
+            this.batchBounds[i] = new int[]{this.sccadd$left() + BATCH_X, this.sccadd$top() + 20 + i * 16 + 1, BATCH_W, 13};
         }
     }
 
@@ -267,7 +292,7 @@ public abstract class RequesterScreenMixin {
             long target = this.sccadd$target(row);
             boolean typing = this.sccadd$focus == i;
             // Cover SCC's "have / target" text, its "-  target  +" and "<  every  >" controls, and draw ours.
-            int[][] covers = {{27, 91}, {TARGET_X - 1, TARGET_X + TARGET_W + 1}, {TIME_X - 1, TIME_X + TIME_W + 1}};
+            int[][] covers = {{27, 91}, {TARGET_X - 1, TARGET_X + TARGET_W + 1}, {BATCH_X - 1, TIME_X + TIME_W + 1}};
             for (int[] cover : covers) {
                 g.fill(left + cover[0], y, left + cover[1], y + 14, SccGui.BG);
                 if (i % 2 == 1) {
@@ -282,8 +307,17 @@ public abstract class RequesterScreenMixin {
             boolean typingTarget = typing && this.sccadd$field == 0;
             boolean typingTime = typing && this.sccadd$field == 1;
             SccGui.textField(g, font, typingTarget ? this.sccadd$text : BigMath.compact(target), left + TARGET_X, y + 1, TARGET_W, 12, typingTarget, "-");
+            boolean typingBatch = this.batchFocus == i;
+            SccGui.textField(g, font, typingBatch ? this.batchText : this.batchLabel(i), left + BATCH_X, y + 1, BATCH_W, 12, typingBatch, "-");
             SccGui.textField(g, font, typingTime ? this.sccadd$text : BigMath.compactTime(row.intervalSeconds()), left + TIME_X, y + 1, TIME_W, 12, typingTime, "-");
-            if (typingTarget) {
+            if (typingBatch) {
+                Component hint = AmountMath.hint(this.batchText, 0L, RequesterTargetPayload.INT_CAP);
+                if (hint != null) {
+                    int w = font.width(hint);
+                    g.fill(left + BATCH_X - w - 6, y + 1, left + BATCH_X - 1, y + 13, SccGui.BG);
+                    AmountMath.drawHint(g, font, this.batchText, 0L, RequesterTargetPayload.INT_CAP, left + BATCH_X - 3, y + 4);
+                }
+            } else if (typingTarget) {
                 Component hint = AmountMath.hint(this.sccadd$text, 1L, BigMath.MAX);
                 if (hint != null) {
                     int w = font.width(hint);

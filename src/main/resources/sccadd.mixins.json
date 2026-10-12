@@ -23,10 +23,13 @@
     "ConnectorAllowsInvoker",
     "Ae2NetworkScannerMixin",
     "Ae2MeStoreInvoker",
-    "NetworkViewAdd"
+    "NetworkViewAdd",
+    "InterfaceTemplateGuardMixin",
+    "InterfaceTanksMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",
+    "client.InterfaceScreenFluidMixin",
     "client.CustomRecipeBookMixin",
     "client.Ae2TerminalScreenMixin",
     "client.Ae2OfferPatternsMixin",

@@ -200,8 +200,13 @@ public abstract class BreakingCalculatorPerfMixin {
 
     @Unique
     private boolean sccadd$shouldDefer(Level level, int blocks) {
-        int target = SccAddConfig.accumulateTarget();
-        if (!SccAddConfig.batchBreaking() || target <= 0 || !this.sccadd$hot || blocks >= target
+        int base = SccAddConfig.accumulateTarget();
+        // Each calculator waits for a slightly different amount (75%-125%) and a slightly different time,
+        // so they drift apart instead of all breaking their pile in the same tick.
+        int phase = ((BlockEntity) (Object) this).getBlockPos().hashCode() & 0xFF;
+        int target = (int) Math.max(2L, Math.round(base * (0.75 + phase / 255.0 * 0.5)));
+        int maxWait = 14 + (phase & 7);
+        if (!SccAddConfig.batchBreaking() || base <= 0 || !this.sccadd$hot || blocks >= target
                 || !this.sccadd$buffer.isEmpty()) {
             this.sccadd$deferred = 0;
             return false;
@@ -209,8 +214,8 @@ public abstract class BreakingCalculatorPerfMixin {
         long now = level.getGameTime();
         if (this.sccadd$deferred == 0) {
             this.sccadd$deferFrom = now;
-        } else if (now - this.sccadd$deferFrom >= 20L) {
-            return false; // at most about a second of waiting
+        } else if (now - this.sccadd$deferFrom >= maxWait) {
+            return false; // about a second of waiting at most
         }
         this.sccadd$deferred++;
         BreakStats.deferred();

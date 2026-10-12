@@ -63,6 +63,12 @@ public abstract class OrderDialogThinkMixin {
     @Shadow
     public abstract void close();
 
+    /** The amount field took only four digits; it now takes as many as the largest allowed amount has. */
+    @ModifyConstant(method = "charTyped", constant = @Constant(intValue = 4), require = 0)
+    private int sccadd$digits(int original) {
+        return Integer.toString(SccAddConfig.orderMaxAmount()).length();
+    }
+
     @ModifyConstant(method = "maxAmount", constant = @Constant(intValue = 9999), require = 0)
     private int sccadd$maxAmount(int original) {
         return SccAddConfig.orderMaxAmount();

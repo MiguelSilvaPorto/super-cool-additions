@@ -44,7 +44,7 @@ public final class BigMath {
     }
 
     private static String trim(double value) {
-        String digits = String.format("%.2f", value);
+        String digits = String.format(java.util.Locale.ROOT, "%.2f", value);
         return digits.replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
@@ -78,7 +78,7 @@ public final class BigMath {
         for (int i = 0; i < names.length; i++) {
             if (value >= sizes[i]) {
                 double scaled = (double) value / sizes[i];
-                String digits = scaled >= 100 ? String.format("%.0f", scaled) : scaled >= 10 ? String.format("%.1f", scaled) : String.format("%.2f", scaled);
+                String digits = scaled >= 100 ? String.format(java.util.Locale.ROOT, "%.0f", scaled) : scaled >= 10 ? String.format(java.util.Locale.ROOT, "%.1f", scaled) : String.format(java.util.Locale.ROOT, "%.2f", scaled);
                 if (digits.contains(".")) {
                     digits = digits.replaceAll("0+$", "").replaceAll("\\.$", "");
                 }
