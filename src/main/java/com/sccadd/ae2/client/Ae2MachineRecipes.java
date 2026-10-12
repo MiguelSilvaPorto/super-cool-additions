@@ -82,6 +82,12 @@ public final class Ae2MachineRecipes {
             if (result.isEmpty()) {
                 continue;
             }
+            if (isPress(result)) {
+                // "iron block + press -> press" copies a press you already have. As a recipe it reads
+                // like "iron block makes a press" (the catalyst comes back), which sends iron into an
+                // Inscriber with no press and never finishes. Presses are not made by SCC.
+                continue;
+            }
             String id = "sccadd:ae2inscriber/" + holder.id();
             if (book.byId(id) != null) {
                 continue;
