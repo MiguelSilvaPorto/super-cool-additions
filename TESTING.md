@@ -18,6 +18,12 @@ um contêiner em cima para a saída.
 - [ ] `/scc profile on`, deixe rodando alguns minutos, `/scc profile`.
       Compare o tempo do BE da calculadora e as linhas `sccadd breaking work`,
       `sccadd loot roll`, `sccadd drop event`.
+- [ ] `/sccadd breaking`: mostra taxa, crédito, keys, buffer e os contadores (lotes, blocos,
+      quebras reais, esperas). Com `speedup = 1.0` a taxa mostrada deve bater com o tier
+      (Singularidade sem Overdrive = 32/s; no passo 4 do Overdrive = 128/s).
+- [ ] `/sccadd breaking stress 4096` num lote: nenhum "long call" no `logs/scc.log` acima de
+      ~8 ms e o crédito volta a acumular depois.
+- [ ] `/sccadd breaking tables` lista as tabelas prontas; `reset` faz as máquinas aprenderem de novo.
 - [ ] Os drops continuam corretos (pedra → pedregulho, minérios, etc.).
 - [ ] Com Overdrive ligado, a taxa não passa do orçamento configurado
       (`totalBudgetMs`, padrão 6 ms/tick somando todas as calculadoras).

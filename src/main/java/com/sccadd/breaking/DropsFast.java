@@ -68,9 +68,15 @@ public final class DropsFast {
     public static List<ItemStack> getDrops(Object owner, BlockState state, ServerLevel level, BlockPos pos,
                                            BlockEntity be, Entity entity, ItemStack tool) {
         if (!SccAddConfig.cacheLootParams()) {
-            return Block.getDrops(state, level, pos, be, entity, tool);
+            long plain = System.nanoTime();
+            try {
+                return Block.getDrops(state, level, pos, be, entity, tool);
+            } finally {
+                noteSlowLoot(state, tool, System.nanoTime() - plain);
+            }
         }
         long profile = SccAddConfig.profile() ? SccProfiler.begin() : 0L;
+        long started = System.nanoTime();
         try {
             Cache cache = CACHES.computeIfAbsent(owner, key -> new Cache());
             long now = level.getGameTime();
@@ -111,7 +117,35 @@ public final class DropsFast {
             if (profile != 0L) {
                 SccProfiler.end("sccadd loot roll", profile);
             }
+            noteSlowLoot(state, tool, System.nanoTime() - started);
         }
+    }
+
+    private static long slowLoggedAt;
+
+    /**
+     * Reports a loot roll that really cost time, so the tables behind the spikes can be recognized
+     * instead of guessed. At most one line per second, on top of the {@code slowLootMs} threshold.
+     */
+    private static void noteSlowLoot(BlockState state, ItemStack tool, long nanos) {
+        double limit = SccAddConfig.slowLootMs();
+        if (limit <= 0.0) {
+            return;
+        }
+        double ms = nanos / 1_000_000.0;
+        if (ms < limit) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - slowLoggedAt < 1000L) {
+            return;
+        }
+        slowLoggedAt = now;
+        BreakStats.slowLoot();
+        SccLog.info("sccadd", "slow loot roll: " + String.format(java.util.Locale.ROOT, "%.1f", ms) + " ms for "
+                + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()) + " with "
+                + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(tool.getItem()) + " (table "
+                + state.getBlock().getLootTable().location() + ")");
     }
 
     private record DropKey(BlockState state, Item tool, int enchantments) {

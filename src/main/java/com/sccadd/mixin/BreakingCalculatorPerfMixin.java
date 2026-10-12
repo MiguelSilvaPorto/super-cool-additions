@@ -4,6 +4,10 @@ import com.sccadd.SccAddConfig;
 import com.sccadd.breaking.BreakBuffer;
 import com.sccadd.breaking.BreakStats;
 import com.sccadd.breaking.BreakingBudget;
+import com.sccadd.breaking.BreakingMetrics;
+import com.sccadd.breaking.BreakingRates;
+import com.sccadd.breaking.BreakingTempo;
+import com.sccadd.breaking.BreakingTrack;
 import com.sccadd.breaking.DropModels;
 import com.sccadd.breaking.DropsFast;
 import de.scc.calculator.SccProfiler;
@@ -43,13 +47,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <ul>
  *   <li>hard per-tick budget for all calculators together (see {@link BreakingBudget}),</li>
+ *   <li>batch mode on an honest clock: the machine banks the blocks it earns (tier or Overdrive,
+ *       times the speedup config, see {@link BreakingTempo}) and delivers them as a few big batches,</li>
  *   <li>loot parameters and the drop event are built much more cheaply (see {@link DropsFast}),</li>
  *   <li>tool durability is synced once per tick instead of once per broken block,</li>
  *   <li>optional fine-grained marks for {@code /scc profile}.</li>
  * </ul>
  */
 @Mixin(value = BreakingCalculatorBlockEntity.class, remap = false)
-public abstract class BreakingCalculatorPerfMixin {
+public abstract class BreakingCalculatorPerfMixin implements BreakingMetrics {
+    /** The most one call takes from the network at once. */
+    private static final int BATCH_CAP = 4096;
+
     @Shadow
     private transient int carry;
 
@@ -88,6 +97,9 @@ public abstract class BreakingCalculatorPerfMixin {
     private int next;
 
     @Shadow
+    private transient long lastWorkedAt;
+
+    @Shadow
     @Final
     private int[] tagTurn;
 
@@ -107,15 +119,20 @@ public abstract class BreakingCalculatorPerfMixin {
     @Unique
     private final BreakBuffer sccadd$buffer = new BreakBuffer();
 
+    /** The blocks this machine has earned and not delivered yet. */
+    @Unique
+    private final BreakingTempo sccadd$tempo = new BreakingTempo();
+
     /** Blocks each key still has to receive in this work call (the dry run of SCC's round-robin). */
     @Unique
     private Map<StackKey, Integer> sccadd$need;
 
+    /** The blocks SCC asked for in this call, and what the batch may really use. */
     @Unique
-    private int sccadd$deferred;
+    private int sccadd$callBlocks;
 
     @Unique
-    private long sccadd$deferFrom;
+    private int sccadd$batchBudget;
 
     /** The last work call batched something: only then it is worth letting blocks pile up. */
     @Unique
@@ -123,6 +140,14 @@ public abstract class BreakingCalculatorPerfMixin {
 
     @Unique
     private boolean sccadd$batchedNow;
+
+    /** True while the batch itself is teaching the dice table (that break is already paid). */
+    @Unique
+    private boolean sccadd$inBatch;
+
+    /** Items the round-robin is cycling through, from the last dry run. */
+    @Unique
+    private int sccadd$activeKeys = 1;
 
     /** Blocks already processed in a batch that the loop has not asked for yet. */
     @Unique
@@ -153,34 +178,35 @@ public abstract class BreakingCalculatorPerfMixin {
     private boolean sccadd$toolDirty;
 
     // ------------------------------------------------------------------
-    // budget + profiling around work()
+    // the batch clock: earn blocks over time, deliver them in one batch
     // ------------------------------------------------------------------
 
     @Inject(method = "work", at = @At("HEAD"), cancellable = true, require = 0)
     private void sccadd$beginWork(Level level, BlockPos pos, int blocks, CallbackInfo ci) {
         this.sccadd$profileStart = 0L;
-        if (this.sccadd$shouldDefer(level, blocks)) {
-            // Let the blocks pile up: SCC adds them to the next call (carry), where one big batch handles them.
-            this.carry = this.overdriveStep() > 0 ? blocks : blocks + this.blocksPerOperation();
-            this.sccadd$workStart = 0L;
-            ci.cancel();
-            return;
-        }
-        this.sccadd$deferred = 0;
         this.sccadd$need = null;
         this.sccadd$batchedNow = false;
-        this.sccadd$workStart = System.nanoTime();
+        this.sccadd$callBlocks = blocks;
+        this.sccadd$batchBudget = blocks;
         if (level instanceof ServerLevel server) {
+            if (this.sccadd$holdBack(server)) {
+                // The pile is not big enough yet: keep every block for the next call.
+                this.sccadd$workStart = 0L;
+                ci.cancel();
+                return;
+            }
+            this.sccadd$workStart = System.nanoTime();
             long budget = BreakingBudget.begin(server);
             if (budget <= 0L) {
                 // The whole tick's budget is gone: keep the blocks for the next tick.
-                this.carry = blocks;
+                this.carry = this.sccadd$callBlocks;
                 this.sccadd$workStart = 0L;
                 ci.cancel();
                 return;
             }
             this.sccadd$deadline = this.sccadd$workStart + budget;
         } else {
+            this.sccadd$workStart = System.nanoTime();
             this.sccadd$deadline = Long.MAX_VALUE;
         }
         if (SccAddConfig.profile()) {
@@ -198,28 +224,107 @@ public abstract class BreakingCalculatorPerfMixin {
         }
     }
 
+    /**
+     * Banks the machine's own rate and decides whether this call waits for a bigger pile.
+     *
+     * @return true when the call must be held back (nothing is broken this tick)
+     */
     @Unique
-    private boolean sccadd$shouldDefer(Level level, int blocks) {
-        int base = SccAddConfig.accumulateTarget();
-        // Each calculator waits for a slightly different amount (75%-125%) and a slightly different time,
-        // so they drift apart instead of all breaking their pile in the same tick.
-        int phase = ((BlockEntity) (Object) this).getBlockPos().hashCode() & 0xFF;
-        int target = (int) Math.max(2L, Math.round(base * (0.75 + phase / 255.0 * 0.5)));
-        int maxWait = 14 + (phase & 7);
-        if (!SccAddConfig.batchBreaking() || base <= 0 || !this.sccadd$hot || blocks >= target
-                || !this.sccadd$buffer.isEmpty()) {
-            this.sccadd$deferred = 0;
+    private boolean sccadd$holdBack(ServerLevel server) {
+        if (!SccAddConfig.batchBreaking() || SccAddConfig.accumulateTarget() <= 0) {
+            this.sccadd$tempo.release();
             return false;
         }
-        long now = level.getGameTime();
-        if (this.sccadd$deferred == 0) {
-            this.sccadd$deferFrom = now;
-        } else if (now - this.sccadd$deferFrom >= maxWait) {
-            return false; // about a second of waiting at most
+        long now = server.getGameTime();
+        this.sccadd$tempo.accrue(now, BreakingRates.perTick((BreakingCalculatorBlockEntity) (Object) this), BATCH_CAP);
+        if (!this.sccadd$hot || !this.sccadd$buffer.isEmpty()) {
+            this.sccadd$tempo.release();
+            return false;
         }
-        this.sccadd$deferred++;
-        BreakStats.deferred();
-        return true;
+        int target = this.sccadd$target();
+        int earned = this.sccadd$tempo.earned(BATCH_CAP);
+        if (earned < target && this.sccadd$tempo.hold(now, this.sccadd$waitTicks(target))) {
+            // The next call is worth what the machine banked so far: the loop pays one tool use per
+            // block and the Overdrive stays "busy" (so it keeps its step and keeps paying Chronon).
+            this.carry = Math.max(1, earned);
+            this.lastWorkedAt = now;
+            BreakStats.deferred();
+            return true;
+        }
+        this.sccadd$tempo.release();
+        this.sccadd$batchBudget = Math.max(1, earned);
+        return false;
+    }
+
+    /** The batch size the machine waits for: 'accumulate' per item in the filters, with a little drift. */
+    @Unique
+    private int sccadd$target() {
+        int base = SccAddConfig.accumulateTarget();
+        int phase = ((BlockEntity) (Object) this).getBlockPos().hashCode() & 0xFF;
+        int perKey = (int) Math.max(2L, Math.round(base * (0.75 + phase / 255.0 * 0.5)));
+        if (!SccAddConfig.accumulatePerKey()) {
+            return Math.min(BATCH_CAP, perKey);
+        }
+        int keys = Math.max(1, Math.min(27, this.sccadd$activeKeys));
+        return (int) Math.min((long) BATCH_CAP, (long) perKey * keys);
+    }
+
+    /** How long the machine may wait for that batch: the time its own rate needs to earn it. */
+    @Unique
+    private int sccadd$waitTicks(int target) {
+        int perOp = Math.max(1, this.blocksPerOperation());
+        int ticks = Math.max(1, this.grade().configuredTicks());
+        long ops = (target + perOp - 1L) / perOp;
+        long earned = ops * ticks;
+        int cap = SccAddConfig.maxWaitTicks();
+        if (cap <= 0) {
+            return (int) Math.min(Integer.MAX_VALUE, earned);
+        }
+        return (int) Math.min(cap, earned);
+    }
+
+    @Inject(method = "work", at = @At("RETURN"), require = 0)
+    private void sccadd$endWork(Level level, BlockPos pos, int blocks, CallbackInfo ci) {
+        if (this.sccadd$workStart != 0L) {
+            this.sccadd$hot = this.sccadd$batchedNow;
+            if (!this.sccadd$batchedNow) {
+                // No stock, no room or a table still learning: do not bank what could not be used.
+                this.sccadd$tempo.dropCredit();
+            }
+            long took = System.nanoTime() - this.sccadd$workStart;
+            BreakingBudget.record(took);
+            BreakStats.worked(took);
+            this.sccadd$workStart = 0L;
+        }
+        if (this.sccadd$profileStart != 0L) {
+            SccProfiler.end("sccadd breaking work", this.sccadd$profileStart);
+            this.sccadd$profileStart = 0L;
+        }
+    }
+
+    /**
+     * Checked before every single block. SCC's own 2 ms check only starts after the
+     * first successful break; this one also guards the very first block of a call
+     * and honours the configurable budget.
+     */
+    @Inject(method = "breakOne", at = @At("HEAD"), cancellable = true, require = 0)
+    private void sccadd$budgetGate(NetworkView view, ServerLevel server, BlockPos pos, StackKey key, ItemStack effective,
+                                   Entity breaker, IItemHandler out, Map<StackKey, Long> stock, int budget,
+                                   CallbackInfoReturnable<Boolean> cir) {
+        if (this.sccadd$deadline != 0L && System.nanoTime() > this.sccadd$deadline) {
+            this.carry = budget;
+            cir.setReturnValue(false);
+            return;
+        }
+        if (SccAddConfig.batchBreaking() && key != null
+                && this.sccadd$batch(view, server, pos, key, effective, breaker, out, stock, budget)) {
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Unique
+    private long sccadd$capacity() {
+        return (long) SccAddConfig.bufferBase() << this.grade().ordinal();
     }
 
     /**
@@ -263,6 +368,7 @@ public abstract class BreakingCalculatorPerfMixin {
                 break;
             }
         }
+        this.sccadd$activeKeys = Math.max(1, Math.min(27, sim.size()));
         // Blocks already paid in an earlier call are asked for first, so only the rest needs a new batch.
         for (Map.Entry<StackKey, Integer> paid : this.sccadd$credits.entrySet()) {
             Integer wanted = quota.get(paid.getKey());
@@ -273,48 +379,11 @@ public abstract class BreakingCalculatorPerfMixin {
         return quota;
     }
 
-    @Inject(method = "work", at = @At("RETURN"), require = 0)
-    private void sccadd$endWork(Level level, BlockPos pos, int blocks, CallbackInfo ci) {
-        if (this.sccadd$workStart != 0L) {
-            this.sccadd$hot = this.sccadd$batchedNow;
-            BreakingBudget.record(System.nanoTime() - this.sccadd$workStart);
-            this.sccadd$workStart = 0L;
-        }
-        if (this.sccadd$profileStart != 0L) {
-            SccProfiler.end("sccadd breaking work", this.sccadd$profileStart);
-            this.sccadd$profileStart = 0L;
-        }
-    }
-
     /**
-     * Checked before every single block. SCC's own 2 ms check only starts after the
-     * first successful break; this one also guards the very first block of a call
-     * and honours the configurable budget.
-     */
-    @Inject(method = "breakOne", at = @At("HEAD"), cancellable = true, require = 0)
-    private void sccadd$budgetGate(NetworkView view, ServerLevel server, BlockPos pos, StackKey key, ItemStack effective,
-                                   Entity breaker, IItemHandler out, Map<StackKey, Long> stock, int budget,
-                                   CallbackInfoReturnable<Boolean> cir) {
-        if (this.sccadd$deadline != 0L && System.nanoTime() > this.sccadd$deadline) {
-            this.carry = budget;
-            cir.setReturnValue(false);
-            return;
-        }
-        if (SccAddConfig.batchBreaking() && key != null
-                && this.sccadd$batch(view, server, pos, key, effective, breaker, out, stock, budget)) {
-            cir.setReturnValue(true);
-        }
-    }
-
-    @Unique
-    private long sccadd$capacity() {
-        return (long) SccAddConfig.bufferBase() << this.grade().ordinal();
-    }
-
-    /**
-     * Batch break: takes up to {@code budget} blocks of one kind from the network at once, sums their
-     * drops from the dice table and delivers the total. The loop still counts one block per call, so
-     * the other blocks of the batch are paid back as credits (and wear the tool the way SCC does).
+     * Batch break: takes the blocks this machine has earned of one kind from the network at once,
+     * sums their drops from the dice table and delivers the total. The loop still counts one block
+     * per call, so the other blocks of the batch are paid back as credits (and wear the tool the way
+     * SCC does).
      *
      * @return true when this call is already paid (one block broken)
      */
@@ -322,7 +391,7 @@ public abstract class BreakingCalculatorPerfMixin {
     private boolean sccadd$batch(NetworkView view, ServerLevel server, BlockPos pos, StackKey key, ItemStack effective,
                                  Entity breaker, IItemHandler out, Map<StackKey, Long> stock, int budget) {
         if (this.sccadd$need == null) {
-            this.sccadd$need = this.sccadd$dryRun(view, server, stock, budget);
+            this.sccadd$need = this.sccadd$dryRun(view, server, stock, Math.max(1, this.sccadd$batchBudget));
         }
         Integer credit = this.sccadd$credits.get(key);
         if (credit != null && credit > 0) {
@@ -347,7 +416,7 @@ public abstract class BreakingCalculatorPerfMixin {
             BreakStats.noModel();
             return false; // still learning from real breaks
         }
-        int n = (int) Math.min(Math.min((long) wanted, have), 4096L);
+        int n = (int) Math.min(Math.min((long) wanted, have), (long) BATCH_CAP);
         if (this.toolWears()) {
             ItemStack held = this.tool.getStackInSlot(0);
             if (held.isEmpty() || !held.isDamageableItem()) {
@@ -391,6 +460,7 @@ public abstract class BreakingCalculatorPerfMixin {
             drops = model.sum(n);
         }
         this.taken.merge(key, (long) n, Long::sum);
+        this.sccadd$tempo.delivered(n);
         long before = this.sccadd$buffer.total();
         for (ItemStack drop : drops) {
             ItemStack rest = ItemHandlerHelper.insertItemStacked(out, drop.copy(), false);
@@ -410,7 +480,12 @@ public abstract class BreakingCalculatorPerfMixin {
             ((BlockEntity) (Object) this).setChanged();
         }
         // One real result per batch keeps the dice table following the real loot.
-        this.simulate(server, pos, block, effective, breaker);
+        this.sccadd$inBatch = true;
+        try {
+            this.simulate(server, pos, block, effective, breaker);
+        } finally {
+            this.sccadd$inBatch = false;
+        }
         this.sccadd$credits.put(key, n - 1);
         this.sccadd$need.put(key, Math.max(0, wanted - n));
         this.sccadd$batchedNow = true;
@@ -424,6 +499,10 @@ public abstract class BreakingCalculatorPerfMixin {
                               CallbackInfoReturnable<List<ItemStack>> cir) {
         if (SccAddConfig.batchBreaking()) {
             DropModels.feed(block, effective, cir.getReturnValue());
+            if (!this.sccadd$inBatch) {
+                // SCC's own path broke this block: it is part of the machine's rate.
+                this.sccadd$tempo.realBreak();
+            }
             if (SccAddConfig.profile()) {
                 BreakStats.learn();
                 BreakStats.maybeLog();
@@ -545,10 +624,55 @@ public abstract class BreakingCalculatorPerfMixin {
     private static void sccadd$flushToolSync(Level level, BlockPos pos, BlockState state,
                                              BreakingCalculatorBlockEntity be, CallbackInfo ci) {
         BreakingCalculatorPerfMixin mixin = (BreakingCalculatorPerfMixin) (Object) be;
+        if (level instanceof ServerLevel server) {
+            BreakingTrack.seen(be, server);
+        }
         if (mixin.sccadd$toolDirty) {
             mixin.sccadd$toolDirty = false;
             be.setChanged();
             ((NetworkBlockEntityInvoker) be).sccadd$sync();
         }
+    }
+
+    // ------------------------------------------------------------------
+    // what /sccadd breaking may see
+    // ------------------------------------------------------------------
+
+    @Override
+    public double sccadd$credit() {
+        return this.sccadd$tempo.credit();
+    }
+
+    @Override
+    public int sccadd$earned() {
+        return this.sccadd$tempo.earned(BATCH_CAP);
+    }
+
+    @Override
+    public int sccadd$activeKeys() {
+        return this.sccadd$activeKeys;
+    }
+
+    @Override
+    public int sccadd$bufferTotal() {
+        return (int) Math.min(Integer.MAX_VALUE, this.sccadd$buffer.total());
+    }
+
+    @Override
+    public int sccadd$bufferCapacity() {
+        return (int) Math.min(Integer.MAX_VALUE, this.sccadd$capacity());
+    }
+
+    @Override
+    public boolean sccadd$batching() {
+        return this.sccadd$hot;
+    }
+
+    @Override
+    public void sccadd$stress(int blocks) {
+        this.sccadd$tempo.grant(blocks);
+        this.sccadd$hot = true;
+        this.carry = blocks;
+        ((BlockEntity) (Object) this).setChanged();
     }
 }

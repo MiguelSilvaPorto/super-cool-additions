@@ -21,6 +21,10 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue BREAKING_BATCH;
     public static final ModConfigSpec.IntValue BREAKING_BUFFER_BASE;
     public static final ModConfigSpec.IntValue BREAKING_ACCUMULATE;
+    public static final ModConfigSpec.BooleanValue BREAKING_ACCUMULATE_PER_KEY;
+    public static final ModConfigSpec.DoubleValue BREAKING_SPEEDUP;
+    public static final ModConfigSpec.IntValue BREAKING_MAX_WAIT;
+    public static final ModConfigSpec.DoubleValue BREAKING_SLOW_LOOT_MS;
     public static final ModConfigSpec.IntValue REQUESTER_MAX_ORDER;
     public static final ModConfigSpec.IntValue THINK_MS_PER_TICK;
     public static final ModConfigSpec.IntValue THINK_MAX_TASKS;
@@ -98,10 +102,35 @@ public final class SccAddConfig {
 
         BREAKING_ACCUMULATE = builder
                 .comment("Batch size the calculator waits for before it works (in blocks).",
-                        "Instead of working every tick with the few blocks that came due, it lets them pile up",
-                        "(at most ~1 s) and then breaks them in one go: fewer, bigger batches, far less overhead.",
-                        "Output arrives in bursts. 0 = work every tick as SCC does. Only used once a block's dice table is ready.")
+                        "The calculator banks the blocks it earns and delivers them in one batch, which costs",
+                        "one real break per batch instead of one per block. Waiting never makes the machine",
+                        "faster: what it earns is what the tier (or the Overdrive) allows. Output arrives in bursts.",
+                        "0 = SCC's behaviour, block by block. Only used once a block's dice table is ready.")
                 .defineInRange("accumulate", 64, 0, 512);
+
+        BREAKING_ACCUMULATE_PER_KEY = builder
+                .comment("Treat 'accumulate' as a size per item instead of a total for the call.",
+                        "With several ores in the filters the total is split between them: on, each item in the",
+                        "filters waits for the full 'accumulate' before its batch goes out (fewer real breaks).")
+                .define("accumulatePerKey", true);
+
+        BREAKING_SPEEDUP = builder
+                .comment("Multiplier on the calculator's own rate (1.0 - 40.0). 1.0 = exactly what SCC allows.",
+                        "Bigger batches must not change how fast the machine really is, so the batch mode banks",
+                        "the tier's rate (and the Overdrive rate) times this factor. 1.0 keeps the tier balance",
+                        "and the Chronon economy intact; raise it deliberately to make the machines themselves faster.")
+                .defineInRange("speedup", 1.0, 1.0, 40.0);
+
+        BREAKING_MAX_WAIT = builder
+                .comment("Longest the calculator waits for a full batch, in ticks (0 = as long as the batch needs).",
+                        "The wait is earned by the machine's own rate: a Singularity earning 64 blocks needs 40",
+                        "ticks. This caps how late the drops can arrive on slow tiers. 20 ticks = 1 second.")
+                .defineInRange("maxWaitTicks", 200, 0, 24000);
+
+        BREAKING_SLOW_LOOT_MS = builder
+                .comment("Write to logs/scc.log when one loot roll takes longer than this (ms). 0 = off.",
+                        "Finds the tables that really cost time (modded ores, heavy drop events) instead of guessing.")
+                .defineInRange("slowLootMs", 4.0, 0.0, 1000.0);
 
         BREAKING_PROFILE = builder
                 .comment("Add fine-grained marks for the breaking path to /scc profile",
@@ -301,6 +330,22 @@ public final class SccAddConfig {
 
     public static int accumulateTarget() {
         return BREAKING_ACCUMULATE.get();
+    }
+
+    public static boolean accumulatePerKey() {
+        return BREAKING_ACCUMULATE_PER_KEY.get();
+    }
+
+    public static double speedup() {
+        return BREAKING_SPEEDUP.get();
+    }
+
+    public static int maxWaitTicks() {
+        return BREAKING_MAX_WAIT.get();
+    }
+
+    public static double slowLootMs() {
+        return BREAKING_SLOW_LOOT_MS.get();
     }
 
     public static int bufferBase() {

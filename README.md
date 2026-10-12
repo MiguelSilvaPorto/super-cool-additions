@@ -37,9 +37,20 @@ O SCC 1.4.0 já tenta limitar cada operação a 2 ms por tick, mas esse limite:
 
 ### Modo lote
 
-Com `[breaking] batch = true` (padrão), o addon aprende a distribuição real dos drops de cada minério ("tabelas de dados") e passa a creditar **vários blocos de uma vez** em vez de simular um por um, ainda gastando a durabilidade. Cada nível tem um buffer escondido (`bufferBase`, dobra a cada tier) e `accumulate` junta blocos em lotes grandes. É uma **aproximação estatística** que se corrige sozinha com as quebras reais; `[breaking] batch = false` volta ao ritmo por tick.
+Com `[breaking] batch = true` (padrão), o addon aprende a distribuição real dos drops de cada minério ("tabelas de dados") e passa a creditar **vários blocos de uma vez** em vez de simular um por um, ainda gastando a durabilidade.
+
+**A máquina continua no ritmo do SCC.** O lote acumula os blocos que a calculadora **ganha** — a taxa do tier ou a do Overdrive, vezes `speedup` (padrão **1.0**) — num crédito por máquina; quando o crédito chega ao alvo (`accumulate`, por item dos filtros) ela quebra o lote inteiro de uma vez. Esperar por um lote maior **nunca** deixa a máquina mais rápida: se você quer os blocos mais rápidos, é `speedup` ou Overdrive (que continua valendo por cima). Cada nível tem um buffer escondido (`bufferBase`, dobra a cada tier) e o lote sai em rajadas; `[breaking] batch = false` volta ao ritmo do SCC, bloco a bloco.
+
+É uma **aproximação estatística** que se corrige sozinha com as quebras reais: 1 quebra real por lote mantém a tabela seguindo o loot de verdade.
 
 ### Como medir
+
+```
+/sccadd breaking          # taxa, crédito, keys, buffer e contadores de cada calculadora
+/sccadd breaking tables   # as tabelas de dado (bloco + ferramenta, amostras, prontas?)
+/sccadd breaking reset    # apaga as tabelas (quando um datapack muda o loot)
+/sccadd breaking stress 4096   # força um lote de 4096 blocos na próxima chamada de cada máquina
+```
 
 ```
 /scc profile on
@@ -47,7 +58,7 @@ Com `[breaking] batch = true` (padrão), o addon aprende a distribuição real d
 /scc profile
 ```
 
-Compare as linhas `sccadd …` e o total do BE da calculadora. O log `logs/scc.log` também mostra "long call" acima de 8 ms.
+Compare as linhas `sccadd …` e o total do BE da calculadora. O log `logs/scc.log` mostra "long call" acima de 8 ms, o resumo do lote a cada 10 s e — com `slowLootMs` (padrão 4 ms) — qual tabela de loot está custando tempo de verdade.
 
 ### Config
 
@@ -60,6 +71,14 @@ Compare as linhas `sccadd …` e o total do BE da calculadora. O log `logs/scc.l
 | `fireDropsEvent` | `true` | disparar `BlockDropsEvent` nas quebras simuladas |
 | `deferToolSync` | `true` | sincronizar desgaste 1× por tick |
 | `cacheLootParams` | `true` | reaproveitar parâmetros de loot no tick |
+| `cacheFixedLoot` | `true` | tabelas determinísticas (pedra, madeira) sorteadas 1× e copiadas |
+| `batch` | `true` | modo lote (tabelas de dado) em vez de simular bloco a bloco |
+| `bufferBase` | `256` | itens do buffer escondido no tier Basic (dobra por tier: até 8192) |
+| `accumulate` | `64` | blocos por item que a máquina espera para fechar um lote (0 = desliga) |
+| `accumulatePerKey` | `true` | `accumulate` é o alvo **por item** dos filtros, não o total da chamada |
+| `speedup` | `1.0` | multiplica o ritmo do tier/Overdrive (1.0 = exatamente o que o SCC permite) |
+| `maxWaitTicks` | `200` | teto de espera pelo lote em ticks (0 = sem teto) |
+| `slowLootMs` | `4.0` | loga loot rolls mais lentos que isso (0 = desliga) |
 | `profile` | `true` | marcas extras no `/scc profile` |
 
 Valores são lidos a cada uso: pode editar e recarregar o mundo sem reiniciar (ou usar `/scc reloadconfig` para o lado do SCC).

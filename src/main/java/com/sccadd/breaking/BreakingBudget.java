@@ -44,4 +44,9 @@ public final class BreakingBudget {
             spentNanos += nanos;
         }
     }
+
+    /** Nanoseconds all calculators spent in the current tick so far (for reports). */
+    public static long spentNanos() {
+        return spentNanos;
+    }
 }
