@@ -43,6 +43,16 @@ public final class ReceiverMeConnector extends StorageConnectorBlockEntity {
         return node != null && node.isActive() ? node.getGrid() : null;
     }
 
+    /** The grid's ME inventory (items and fluids), or null while the receiver touches no active grid. */
+    @Nullable
+    public appeng.api.storage.MEStorage meStorage() {
+        if (suspended) {
+            return null;
+        }
+        IGrid grid = this.grid();
+        return grid == null ? null : grid.getStorageService().getInventory();
+    }
+
     @Nullable
     @Override
     public IItemHandler handler() {

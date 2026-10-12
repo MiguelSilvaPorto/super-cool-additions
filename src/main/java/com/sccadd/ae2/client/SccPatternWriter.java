@@ -60,6 +60,10 @@ public final class SccPatternWriter {
         if (!SccAddConfig.offerRequiresStock() || offerText == null || offerText.isEmpty()) {
             return offerText;
         }
+        // The SCC terminal's "Only with ingredients" button decides: off = show every recipe.
+        if (!de.scc.calculator.SccConfig.get().onlyAvailableCraftable) {
+            return offerText;
+        }
         RecipeBook book = AnalysisManager.get().book();
         ItemGraph graph = AnalysisManager.get().graph();
         if (book == null || graph == null) {
@@ -133,7 +137,30 @@ public final class SccPatternWriter {
         return out.toString();
     }
 
+    private static boolean usable(SccRecipe recipe, RecipeBook book) {
+        if (recipe == null || CraftStep.isExternal(recipe.typeId()) || recipe.chancy()) {
+            return false;
+        }
+        if (recipe.inputs().isEmpty() && recipe.fluids().isEmpty()) {
+            return false;
+        }
+        if (recipe.inputs().size() > MAX_INPUTS) {
+            return false;
+        }
+        try {
+            return CraftSim.canRun(recipe, book);
+        } catch (Throwable failed) {
+            return false;
+        }
+    }
+
+    /** SCC's own choice first (the analysis plan), so AE2 shows what SCC will really do. */
     private static SccRecipe pick(StackKey key, RecipeBook book) {
+        var plan = AnalysisManager.get().plan();
+        SccRecipe chosen = plan == null ? null : plan.bestRecipe(key);
+        if (usable(chosen, book)) {
+            return chosen;
+        }
         for (SccRecipe recipe : book.recipesFor(key)) {
             if (recipe == null || CraftStep.isExternal(recipe.typeId())) {
                 continue;

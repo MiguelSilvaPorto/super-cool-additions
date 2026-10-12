@@ -41,6 +41,9 @@ public abstract class Ae2FluidConnectorMixin {
             return null;
         }
         StorageConnectorBlockEntity self = (StorageConnectorBlockEntity) (Object) this;
+        if (self instanceof com.sccadd.ae2.receiver.ReceiverMeConnector virtual) {
+            return virtual.meStorage();
+        }
         BlockPos target = self.ae2Target();
         if (target == null || self.getLevel() == null) {
             return null;

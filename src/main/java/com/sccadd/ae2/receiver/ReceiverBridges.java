@@ -41,6 +41,10 @@ public final class ReceiverBridges {
         return bridge(be).meConnector();
     }
 
+    public static synchronized void patternsArrived(WirelessReceiverBlockEntity be, String text) {
+        bridge(be).patternsArrived(text);
+    }
+
     private static ReceiverBridge bridge(WirelessReceiverBlockEntity be) {
         return BRIDGES.computeIfAbsent(be, ReceiverBridge::new);
     }

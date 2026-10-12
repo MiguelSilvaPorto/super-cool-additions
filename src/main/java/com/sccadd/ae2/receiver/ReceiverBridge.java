@@ -51,13 +51,20 @@ import org.jetbrains.annotations.Nullable;
 public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvider, ICraftingProvider,
         IGridNodeListener<ReceiverBridge> {
     private static final int CHECK_TICKS = 20;
-    private static final int ASK_MIN_TICKS = 2_400;
+    private static final int ASK_MIN_TICKS = 600;
+    /** The stock moved: ask again, but not more often than this (5 s). */
+    private static final int ASK_STOCK_TICKS = 100;
+    private static final int PENDING_TICKS = 200;
 
     private final WirelessReceiverBlockEntity be;
     private final IManagedGridNode main;
     private final SccMeStorage storage;
     private Map<AEKey, StackKey> offer = Map.of();
     private Set<AEKey> emitted = Set.of();
+    /** An offer answer waits here until its recipes arrive, so AE2 sees both at once. */
+    private Map<AEKey, StackKey> pendingOffer;
+    private long pendingSince;
+    private long lastStockVersion = Long.MIN_VALUE;
     private int timer;
     private long askedAt = Long.MIN_VALUE;
     private long lastPatternLog;
@@ -176,7 +183,12 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
         boolean active = node != null && node.isActive();
         if (active != this.meWasActive) {
             this.meWasActive = active;
-            de.scc.calculator.network.NetworkCache.invalidate(server);
+            // The connector is part of the scanned network either way (it reads nothing while the
+            // node is down), so only the stock snapshot is outdated - no full rescan needed.
+            NetworkView changed = this.be.network();
+            if (changed != null) {
+                changed.markStale();
+            }
         }
         if (!active) {
             return;
@@ -196,10 +208,20 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             return;
         }
         long now = server.getGameTime();
-        if (this.askedAt == Long.MIN_VALUE || now < this.askedAt || now - this.askedAt >= ASK_MIN_TICKS) {
+        if (this.pendingOffer != null && now - this.pendingSince >= PENDING_TICKS) {
+            // The recipes never came (client gone?) - do not hold the offer back forever.
+            this.patternsArrived("");
+        }
+        boolean stockMoved = false;
+        if (this.askedAt != Long.MIN_VALUE && now - this.askedAt >= ASK_STOCK_TICKS) {
+            long stockVersion = view.stock(now, false).version();
+            stockMoved = stockVersion != this.lastStockVersion;
+        }
+        if (this.askedAt == Long.MIN_VALUE || now < this.askedAt || stockMoved || now - this.askedAt >= ASK_MIN_TICKS) {
             StackKey anchor = StackKey.of(new ItemStack(SccRegistry.WIRELESS_RECEIVER.get()));
             if (anchor != null && FuelOrders.request(server, this.be.getBlockPos(), view, anchor, 1, FuelOrders.AE2_OFFER_ROW)) {
                 this.askedAt = now;
+                this.lastStockVersion = view.stock(now, false).version();
                 SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
                         + ": asking what SCC can build (linked=" + this.be.linked()
                         + ", transmitter=" + (this.be.transmitter() != null)
@@ -229,14 +251,37 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             }
         }
         this.offer = next;
+        if (SccAddConfig.sccPatternsInAe2()) {
+            // The recipes follow in their own packets: keep the current patterns and the
+            // current emitted set untouched until they land, then swap both at once.
+            this.pendingOffer = next;
+            this.pendingSince = where.getGameTime();
+        } else {
+            SccAe2PatternStore.setRecipes(this.be, List.of());
+            this.commit(next, List.of());
+        }
+    }
+
+    void patternsArrived(String text) {
         List<SccAe2Recipe> recipes = SccAddConfig.sccPatternsInAe2() ? SccAe2Recipe.parse(text) : List.of();
         SccAe2PatternStore.setRecipes(this.be, recipes);
+        Map<AEKey, StackKey> next = this.pendingOffer != null ? this.pendingOffer : this.offer;
+        this.pendingOffer = null;
+        this.commit(next, recipes);
+    }
 
-        IGridNode node = this.main.getNode();
-        ICraftingService crafting = node != null && node.isActive() ? node.getGrid().getCraftingService() : null;
+    private void commit(Map<AEKey, StackKey> next, List<SccAe2Recipe> recipes) {
+        // Items that have a real pattern are planned through it; only the rest stay opaque.
+        Set<AEItemKey> patterned = new HashSet<>();
+        for (SccAe2Recipe recipe : recipes) {
+            AEItemKey ae = AEItemKey.of(recipe.output().display());
+            if (ae != null) {
+                patterned.add(ae);
+            }
+        }
         Set<AEKey> out = new HashSet<>();
         for (AEKey key : next.keySet()) {
-            if (crafting == null || crafting.getCraftingFor(key).isEmpty()) {
+            if (!patterned.contains(key)) {
                 out.add(key);
             }
         }
@@ -245,7 +290,7 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
             ICraftingProvider.requestUpdate(this.main);
         }
         SccLog.info("sccadd", "receiver bridge at " + this.be.getBlockPos().toShortString()
-                + ": SCC can build " + next.size() + " item(s), " + this.emitted.size() + " offered to AE2, "
+                + ": SCC can build " + next.size() + " item(s), " + this.emitted.size() + " opaque, "
                 + recipes.size() + " pattern(s)");
     }
 

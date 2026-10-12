@@ -49,7 +49,11 @@ public abstract class Ae2OfferPatternsMixin {
             base = SccPatternWriter.filterOffer(base);
             BlockPos target = SccPatternWriter.target();
             String patterns = SccPatternWriter.patternsFor(base);
-            if (target != null && !patterns.isEmpty()) {
+            if (target != null && patterns.isEmpty()) {
+                // An empty set still has to arrive: it replaces the previous patterns atomically.
+                SccPatternsPayload empty = new SccPatternsPayload(target, 0, 1, "");
+                Minecraft.getInstance().execute(() -> PacketDistributor.sendToServer(empty));
+            } else if (target != null) {
                 int count = (patterns.length() + CHUNK_CHARS - 1) / CHUNK_CHARS;
                 Minecraft minecraft = Minecraft.getInstance();
                 for (int index = 0; index < count; index++) {

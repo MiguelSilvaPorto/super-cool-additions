@@ -57,7 +57,9 @@ public record SccPatternsPayload(BlockPos pos, int index, int count, String chun
                 }
             }
         }
-        if (be instanceof NetworkBlockEntity network) {
+        if (be instanceof de.scc.calculator.network.WirelessReceiverBlockEntity receiver) {
+            com.sccadd.ae2.receiver.ReceiverBridges.patternsArrived(receiver, text);
+        } else if (be instanceof NetworkBlockEntity network) {
             SccAe2PatternStore.setRecipes(network, SccAe2Recipe.parse(text));
         }
     }
