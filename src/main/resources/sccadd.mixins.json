@@ -29,7 +29,6 @@
     "ProcessorForcedMachineMixin",
     "ProcessorCatalystScannerMixin",
     "CraftJobCatalystSwapMixin",
-    "VillageMerchantMenuMixin",
     "ProcessorKeepCatalystMixin"
   ],
   "client": [

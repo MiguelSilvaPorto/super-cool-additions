@@ -10,18 +10,20 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/** A change made in the Auto Trader's window. */
-public record VillageConfigPayload(BlockPos pos, int action, String signature, int value) implements CustomPacketPayload {
-    public static final int PICK = 0;
+/** An action taken in the chamber's window. */
+public record VillageConfigPayload(BlockPos pos, int action, int value, int extra) implements CustomPacketPayload {
+    public static final int TRADE = 0;
     public static final int OUTPUT = 1;
-    public static final int LEVEL_UP = 2;
+    public static final int TAKE_VILLAGER = 2;
+    public static final int TAKE_WORKSTATION = 3;
+    public static final int REMOVE_MODULE = 4;
 
     public static final Type<VillageConfigPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(SccAdditions.MODID, "village_config"));
     public static final StreamCodec<RegistryFriendlyByteBuf, VillageConfigPayload> CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, VillageConfigPayload::pos,
             ByteBufCodecs.VAR_INT, VillageConfigPayload::action,
-            ByteBufCodecs.stringUtf8(2048), VillageConfigPayload::signature,
             ByteBufCodecs.VAR_INT, VillageConfigPayload::value,
+            ByteBufCodecs.VAR_INT, VillageConfigPayload::extra,
             VillageConfigPayload::new);
 
     @Override
@@ -34,13 +36,18 @@ public record VillageConfigPayload(BlockPos pos, int action, String signature, i
             if (!(context.player() instanceof ServerPlayer player)
                     || !(player.containerMenu instanceof VillageMenu menu)
                     || !menu.pos().equals(payload.pos())
-                    || !(player.level().getBlockEntity(payload.pos()) instanceof VillageSimulatorBlockEntity be)) {
+                    || !(player.level().getBlockEntity(payload.pos()) instanceof VillageChamberBlockEntity be)) {
                 return;
             }
             switch (payload.action()) {
-                case PICK -> be.pick(payload.signature(), payload.value() >= 0, Math.max(0, payload.value()));
-                case OUTPUT -> be.setOutput(payload.value() == 1 ? VillageSimulatorBlockEntity.Output.NEARBY : VillageSimulatorBlockEntity.Output.NETWORK);
-                case LEVEL_UP -> be.setLevelUp(payload.value() != 0);
+                case TRADE -> be.trade(payload.value(), Math.max(1, Math.min(64, payload.extra())), player);
+                case OUTPUT -> be.setOutput(VillageChamberBlockEntity.Output.values()[Math.floorMod(payload.value(), VillageChamberBlockEntity.Output.values().length)]);
+                case TAKE_VILLAGER -> be.takeVillagerOut(player);
+                case TAKE_WORKSTATION -> be.takeWorkstationOut(player);
+                case REMOVE_MODULE -> {
+                    be.removeModule(player);
+                    player.closeContainer();
+                }
                 default -> {
                 }
             }

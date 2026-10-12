@@ -1,5 +1,6 @@
 package com.sccadd.village;
 
+import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -18,27 +19,35 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
-/** The glass box a villager lives in: hollow, so you can see it, with a floor. */
-public abstract class VillageBlockBase extends Block implements EntityBlock {
-    protected VillageBlockBase(Properties properties) {
+/**
+ * The chamber: a glass box with a floor. An Easy Villagers Trader or Auto Trader goes inside (right-click
+ * with it) and the box works as that module - see {@link VillageChamberBlockEntity}.
+ */
+public class VillageChamberBlock extends Block implements EntityBlock {
+    public static final MapCodec<VillageChamberBlock> CODEC = simpleCodec(VillageChamberBlock::new);
+
+    public VillageChamberBlock(Properties properties) {
         super(properties);
     }
 
-    public abstract boolean isAuto();
+    @Override
+    protected MapCodec<? extends Block> codec() {
+        return CODEC;
+    }
 
     @Nullable
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new VillageSimulatorBlockEntity(pos, state);
+        return new VillageChamberBlockEntity(pos, state);
     }
 
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide || type != VillageRegistry.VILLAGE_BE.get()) {
+        if (level.isClientSide || type != VillageRegistry.CHAMBER_BE.get()) {
             return null;
         }
-        return (lvl, pos, st, be) -> ((VillageSimulatorBlockEntity) be).serverTick();
+        return (lvl, pos, st, be) -> ((VillageChamberBlockEntity) be).serverTick();
     }
 
     @Override
@@ -59,18 +68,18 @@ public abstract class VillageBlockBase extends Block implements EntityBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player,
                                               InteractionHand hand, BlockHitResult hit) {
-        if (stack.isEmpty() || !(level.getBlockEntity(pos) instanceof VillageSimulatorBlockEntity be)) {
+        if (stack.isEmpty() || !(level.getBlockEntity(pos) instanceof VillageChamberBlockEntity be)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
         if (level.isClientSide) {
             return ItemInteractionResult.SUCCESS;
         }
-        return be.useItem(player, hand, stack) ? ItemInteractionResult.CONSUME : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        return be.useItem(player, stack) ? ItemInteractionResult.CONSUME : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
-        if (!(level.getBlockEntity(pos) instanceof VillageSimulatorBlockEntity be)) {
+        if (!(level.getBlockEntity(pos) instanceof VillageChamberBlockEntity be)) {
             return InteractionResult.PASS;
         }
         if (!level.isClientSide) {
@@ -81,7 +90,7 @@ public abstract class VillageBlockBase extends Block implements EntityBlock {
 
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {
-        if (!state.is(newState.getBlock()) && !level.isClientSide && level.getBlockEntity(pos) instanceof VillageSimulatorBlockEntity be) {
+        if (!state.is(newState.getBlock()) && !level.isClientSide && level.getBlockEntity(pos) instanceof VillageChamberBlockEntity be) {
             be.dropContents(level, pos);
         }
         super.onRemove(state, level, pos, newState, moved);

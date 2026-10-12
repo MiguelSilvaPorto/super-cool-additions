@@ -27,6 +27,6 @@ public final class VillageMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(Player player) {
         return player.distanceToSqr(this.pos.getX() + 0.5, this.pos.getY() + 0.5, this.pos.getZ() + 0.5) <= 64.0
-                && player.level().getBlockEntity(this.pos) instanceof VillageSimulatorBlockEntity;
+                && player.level().getBlockEntity(this.pos) instanceof VillageChamberBlockEntity;
     }
 }

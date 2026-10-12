@@ -1,17 +1,20 @@
 package com.sccadd.village.client;
 
+import com.sccadd.village.VillageChamberBlockEntity;
 import com.sccadd.village.VillageConfigPayload;
 import com.sccadd.village.VillageMenu;
-import com.sccadd.village.VillageSimulatorBlockEntity;
+import de.maxhenkel.easyvillagers.entity.EasyVillagerEntity;
 import de.scc.calculator.client.screen.SccContainerScreen;
 import de.scc.calculator.client.screen.SccGui;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.npc.VillagerData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
@@ -19,23 +22,20 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The Auto Trader's window, in SCC's own style: the villager's offers with a box to trade each one,
- * how many of the result the network should keep, where the results go, and whether to level up.
+ * The chamber's window, in SCC's style but laid out like Easy Villagers' own: the villager in 3D on the
+ * left with its profession, level and workstation, the offers on the right with a button to trade each
+ * one (paid from the network), and where the results go along the bottom.
  */
 public final class VillageScreen extends SccContainerScreen<VillageMenu> {
-    private static final int ROW_H = 22;
-    private static final int ROWS = 7;
+    private static final int ROW_H = 24;
+    private static final int ROWS = 6;
 
     private int scroll;
-    /** The row whose "keep" number is being typed, or null. */
-    @Nullable
-    private String editing;
-    private String typed = "";
 
     public VillageScreen(VillageMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = 236;
-        this.imageHeight = 26 + ROWS * ROW_H + 52;
+        this.imageWidth = 262;
+        this.imageHeight = 40 + ROWS * ROW_H + 40;
     }
 
     @Override
@@ -44,25 +44,21 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
     }
 
     @Nullable
-    private VillageSimulatorBlockEntity be() {
+    private VillageChamberBlockEntity be() {
         return Minecraft.getInstance().level != null
-                && Minecraft.getInstance().level.getBlockEntity(this.menu.pos()) instanceof VillageSimulatorBlockEntity be ? be : null;
+                && Minecraft.getInstance().level.getBlockEntity(this.menu.pos()) instanceof VillageChamberBlockEntity be ? be : null;
     }
 
-    private void send(int action, String signature, int value) {
-        PacketDistributor.sendToServer(new VillageConfigPayload(this.menu.pos(), action, signature, value));
+    private void send(int action, int value, int extra) {
+        PacketDistributor.sendToServer(new VillageConfigPayload(this.menu.pos(), action, value, extra));
     }
 
     private int listX() {
-        return this.leftPos + 8;
+        return this.leftPos + 96;
     }
 
     private int listY() {
-        return this.topPos + 34;
-    }
-
-    private int rowY(int row) {
-        return this.listY() + row * ROW_H;
+        return this.topPos + 36;
     }
 
     private int bottomY() {
@@ -73,102 +69,53 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
 
     @Override
     protected boolean sccMouseClicked(double mx, double my, int button) {
-        VillageSimulatorBlockEntity be = this.be();
-        if (be == null) {
-            return false;
+        VillageChamberBlockEntity be = this.be();
+        if (be == null || button != 0) {
+            return super.sccMouseClicked(mx, my, button);
         }
-        if (button == 0) {
-            MerchantOffers offers = be.offers();
-            for (int row = 0; row < ROWS; row++) {
-                int index = this.scroll + row;
-                if (index >= offers.size()) {
-                    break;
-                }
-                MerchantOffer offer = offers.get(index);
-                String sig = VillageSimulatorBlockEntity.signature(offer);
-                int y = this.rowY(row);
-                if (my >= y && my < y + ROW_H - 2) {
-                    boolean on = be.picked().containsKey(sig);
-                    if (mx >= this.listX() && mx < this.listX() + 16) {
-                        this.commitTyping();
-                        this.send(VillageConfigPayload.PICK, sig, on ? -1 : 0);
-                        return true;
-                    }
-                    if (on && mx >= this.listX() + 168 && mx < this.listX() + 224) {
-                        this.commitTyping();
-                        this.editing = sig;
-                        this.typed = Integer.toString(be.picked().getOrDefault(sig, 0));
-                        return true;
-                    }
-                }
+        MerchantOffers offers = be.offers();
+        for (int row = 0; row < ROWS; row++) {
+            int index = this.scroll + row;
+            if (index >= offers.size()) {
+                break;
             }
-            int by = this.bottomY();
-            if (my >= by + 16 && my < by + 32) {
-                this.commitTyping();
-                if (mx >= this.listX() && mx < this.listX() + 108) {
-                    this.send(VillageConfigPayload.OUTPUT, "", be.output() == VillageSimulatorBlockEntity.Output.NETWORK ? 1 : 0);
-                    return true;
-                }
-                if (mx >= this.listX() + 112 && mx < this.listX() + 220) {
-                    this.send(VillageConfigPayload.LEVEL_UP, "", be.levelUp() ? 0 : 1);
-                    return true;
-                }
+            int y = this.listY() + row * ROW_H;
+            if (mx >= this.listX() + 112 && mx < this.listX() + 158 && my >= y + 2 && my < y + ROW_H - 4) {
+                int times = Screen.hasControlDown() ? 64 : Screen.hasShiftDown() ? 10 : 1;
+                this.send(VillageConfigPayload.TRADE, index, times);
+                return true;
             }
         }
-        this.commitTyping();
+        int left = this.leftPos + 8;
+        int top = this.topPos + 140;
+        if (mx >= left && mx < left + 80) {
+            if (my >= top && my < top + 16) {
+                this.send(VillageConfigPayload.TAKE_VILLAGER, 0, 0);
+                return true;
+            }
+            if (my >= top + 18 && my < top + 34) {
+                this.send(VillageConfigPayload.TAKE_WORKSTATION, 0, 0);
+                return true;
+            }
+            if (my >= top + 36 && my < top + 52) {
+                this.send(VillageConfigPayload.REMOVE_MODULE, 0, 0);
+                return true;
+            }
+        }
+        int by = this.bottomY();
+        if (my >= by + 4 && my < by + 20 && mx >= this.listX() && mx < this.listX() + 158) {
+            this.send(VillageConfigPayload.OUTPUT, be.output().ordinal() + 1, 0);
+            return true;
+        }
         return super.sccMouseClicked(mx, my, button);
-    }
-
-    private void commitTyping() {
-        VillageSimulatorBlockEntity be = this.be();
-        if (this.editing != null && be != null && be.picked().containsKey(this.editing)) {
-            int keep = 0;
-            try {
-                keep = Math.max(0, Math.min(1_000_000, Integer.parseInt(this.typed.isBlank() ? "0" : this.typed)));
-            } catch (NumberFormatException ignored) {
-                // keep 0
-            }
-            this.send(VillageConfigPayload.PICK, this.editing, keep);
-        }
-        this.editing = null;
     }
 
     @Override
     protected boolean sccMouseScrolled(double mx, double my, double dx, double dy) {
-        VillageSimulatorBlockEntity be = this.be();
+        VillageChamberBlockEntity be = this.be();
         int size = be == null ? 0 : be.offers().size();
         this.scroll = Math.max(0, Math.min(Math.max(0, size - ROWS), this.scroll - (int) Math.signum(dy)));
         return true;
-    }
-
-    @Override
-    public boolean charTyped(char ch, int modifiers) {
-        if (this.editing != null && Character.isDigit(ch) && this.typed.length() < 7) {
-            this.typed += ch;
-            return true;
-        }
-        return super.charTyped(ch, modifiers);
-    }
-
-    @Override
-    public boolean keyPressed(int key, int scan, int modifiers) {
-        if (this.editing != null) {
-            if (key == 257 || key == 335) {
-                this.commitTyping();
-                return true;
-            }
-            if (key == 259) {
-                if (!this.typed.isEmpty()) {
-                    this.typed = this.typed.substring(0, this.typed.length() - 1);
-                }
-                return true;
-            }
-            if (key == 256) {
-                this.editing = null;
-                return true;
-            }
-        }
-        return super.keyPressed(key, scan, modifiers);
     }
 
     // ---- drawing ----
@@ -182,17 +129,50 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
     @Override
     protected void sccRender(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.sccRender(g, mouseX, mouseY, partialTick);
-        VillageSimulatorBlockEntity be = this.be();
-        g.drawString(this.font, "Village Auto Trader", this.leftPos + 8, this.topPos + 4, SccGui.ACCENT, false);
+        VillageChamberBlockEntity be = this.be();
+        String kind = be == null ? "" : switch (be.module()) {
+            case TRADER -> " - Trader";
+            case AUTO -> " - Auto Trader";
+            default -> "";
+        };
+        g.drawString(this.font, "Village Chamber" + kind, this.leftPos + 8, this.topPos + 4, SccGui.ACCENT, false);
         if (be == null) {
             return;
         }
-        String who = be.workstationName() + ", " + be.stateText();
-        SccGui.clipped(g, this.font, who, this.leftPos + 8, this.topPos + 19, this.imageWidth - 16, SccGui.MUTED);
+        this.drawVillager(g, be, mouseX, mouseY);
+        this.drawOffers(g, be, mouseX, mouseY);
+        this.drawBottom(g, be, mouseX, mouseY);
+    }
 
+    private void drawVillager(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
+        int x = this.leftPos + 8;
+        int y = this.topPos + 20;
+        g.fill(x, y, x + 80, y + 112, SccGui.PLATE_BG);
+        SccGui.outline(g, x, y, 80, 112, SccGui.BORDER);
+        EasyVillagerEntity villager = be.villager();
+        if (villager == null) {
+            g.drawString(this.font, "No villager", x + 16, y + 50, SccGui.MUTED, false);
+            g.drawString(this.font, "inside", x + 24, y + 62, SccGui.MUTED, false);
+        } else {
+            InventoryScreen.renderEntityInInventoryFollowsMouse(g, x + 1, y + 1, x + 79, y + 88, 34, 0.0625F, mouseX, mouseY, villager);
+            VillagerData data = villager.getVillagerData();
+            String profession = BuiltInRegistries.VILLAGER_PROFESSION.getKey(data.getProfession()).getPath().replace('_', ' ');
+            g.drawString(this.font, this.font.plainSubstrByWidth(profession, 76), x + 3, y + 90, SccGui.TEXT, false);
+            int max = VillagerData.canLevelUp(data.getLevel()) ? VillagerData.getMaxXpPerLevel(data.getLevel()) : 0;
+            g.drawString(this.font, "Level " + data.getLevel() + (max > 0 ? "  " + villager.getVillagerXp() + "/" + max : ""),
+                    x + 3, y + 101, SccGui.MUTED, false);
+        }
+        g.drawString(this.font, this.font.plainSubstrByWidth("Bench: " + be.workstationName(), 76), x, this.topPos + 134 - 0, SccGui.MUTED, false);
+        int top = this.topPos + 140;
+        this.button(g, x, top, 80, "Take villager out", mouseX, mouseY);
+        this.button(g, x, top + 18, 80, "Take bench out", mouseX, mouseY);
+        this.button(g, x, top + 36, 80, "Remove module", mouseX, mouseY);
+    }
+
+    private void drawOffers(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
         MerchantOffers offers = be.offers();
         if (offers.isEmpty()) {
-            g.drawString(this.font, be.villagerStack().isEmpty() ? "No villager inside." : "No offers yet - add a workstation.",
+            g.drawString(this.font, be.villager() == null ? "Put a villager in the chamber." : "No offers: add a workstation.",
                     this.listX() + 4, this.listY() + 6, SccGui.MUTED, false);
         }
         for (int row = 0; row < ROWS; row++) {
@@ -201,67 +181,46 @@ public final class VillageScreen extends SccContainerScreen<VillageMenu> {
                 break;
             }
             MerchantOffer offer = offers.get(index);
-            String sig = VillageSimulatorBlockEntity.signature(offer);
-            boolean on = be.picked().containsKey(sig);
             int x = this.listX();
-            int y = this.rowY(row);
-            boolean hover = mouseX >= x && mouseX < x + 224 && mouseY >= y && mouseY < y + ROW_H - 2;
-            g.fill(x, y, x + 224, y + ROW_H - 2, hover ? SccGui.ROW_HOVER : SccGui.PLATE_BG);
-            // the box that turns trading on for this offer
-            g.fill(x + 3, y + 3, x + 15, y + 15, 0xFF10161C);
-            SccGui.outline(g, x + 3, y + 3, 12, 12, on ? SccGui.ACCENT : SccGui.BORDER);
-            if (on) {
-                g.fill(x + 6, y + 6, x + 12, y + 12, SccGui.ACCENT);
-            }
-            int ix = x + 22;
-            this.item(g, offer.getCostA(), ix, y + 2, mouseX, mouseY);
+            int y = this.listY() + row * ROW_H;
+            g.fill(x, y, x + 160, y + ROW_H - 2, SccGui.PLATE_BG);
+            this.item(g, offer.getCostA(), x + 4, y + 3, mouseX, mouseY);
             if (!offer.getCostB().isEmpty()) {
-                g.drawString(this.font, "+", ix + 22, y + 7, SccGui.MUTED, false);
-                this.item(g, offer.getCostB(), ix + 30, y + 2, mouseX, mouseY);
+                g.drawString(this.font, "+", x + 26, y + 8, SccGui.MUTED, false);
+                this.item(g, offer.getCostB(), x + 34, y + 3, mouseX, mouseY);
             }
-            g.drawString(this.font, "→", x + 92, y + 7, SccGui.MUTED, false);
-            this.item(g, offer.getResult(), x + 104, y + 2, mouseX, mouseY);
-            if (offer.isOutOfStock()) {
-                g.drawString(this.font, "sold out", x + 130, y + 7, SccGui.WARN, false);
-            }
-            if (on) {
-                boolean editing = sig.equals(this.editing);
-                int keep = be.picked().getOrDefault(sig, 0);
-                String text = editing ? this.typed + ((System.currentTimeMillis() / 500) % 2 == 0 ? "_" : "")
-                        : (keep > 0 ? "keep " + keep : "no limit");
-                g.fill(x + 168, y + 3, x + 222, y + 17, 0xFF10161C);
-                SccGui.outline(g, x + 168, y + 3, 54, 14, editing ? SccGui.ACCENT : SccGui.BORDER);
-                g.drawString(this.font, this.font.plainSubstrByWidth(text, 50), x + 171, y + 6, SccGui.TEXT, false);
-                if (hover && mouseX >= x + 168) {
-                    SccGui.tooltip(g, this.font, List.of(Component.literal("Keep this many of the result in the network."),
-                            Component.literal("The villager stops trading it once the network holds that many. 0 = no limit.")), mouseX, mouseY);
-                }
-            } else if (hover && mouseX < x + 20) {
-                SccGui.tooltip(g, this.font, Component.literal("Trade this offer automatically"), mouseX, mouseY);
+            g.drawString(this.font, "→", x + 58, y + 8, SccGui.MUTED, false);
+            this.item(g, offer.getResult(), x + 70, y + 3, mouseX, mouseY);
+            boolean out = offer.isOutOfStock();
+            boolean hover = mouseX >= x + 112 && mouseX < x + 158 && mouseY >= y + 2 && mouseY < y + ROW_H - 4;
+            g.fill(x + 112, y + 2, x + 158, y + ROW_H - 4, out ? 0xFF3A2222 : (hover ? SccGui.ROW_HOVER : 0xFF10161C));
+            SccGui.outline(g, x + 112, y + 2, 46, ROW_H - 6, out ? SccGui.BAD : (hover ? SccGui.ACCENT : SccGui.BORDER));
+            g.drawString(this.font, out ? "sold out" : "Trade", x + (out ? 117 : 123), y + 8, out ? SccGui.WARN : SccGui.TEXT, false);
+            if (hover && !out) {
+                SccGui.tooltip(g, this.font, List.of(Component.literal("Trade once, paid from the network."),
+                        Component.literal("Shift: 10 times   Ctrl: 64 times")), mouseX, mouseY);
             }
         }
-        SccGui.verticalScrollbar(g, this.listX() + 226, this.listY(), ROWS * ROW_H, offers.size(), 1, ROWS, this.scroll);
+        SccGui.verticalScrollbar(g, this.listX() + 162, this.listY(), ROWS * ROW_H, offers.size(), 1, ROWS, this.scroll);
+    }
 
+    private void drawBottom(GuiGraphics g, VillageChamberBlockEntity be, int mouseX, int mouseY) {
         int by = this.bottomY();
-        g.fill(this.leftPos + 6, by - 3, this.leftPos + this.imageWidth - 6, by - 2, SccGui.BORDER);
-        g.drawString(this.font, "Picked: " + be.picked().size() + "   Level up with emeralds first, until a picked offer is there.",
-                this.listX(), by + 2, SccGui.MUTED, false);
-        this.button(g, this.listX(), by + 16, 108, "Output: " + (be.output() == VillageSimulatorBlockEntity.Output.NETWORK ? "network" : "nearby"),
-                mouseX, mouseY);
-        this.button(g, this.listX() + 112, by + 16, 108, "Level up: " + (be.levelUp() ? "on" : "off"), mouseX, mouseY);
-        int hy = by + 16;
-        if (mouseY >= hy && mouseY < hy + 16 && mouseX >= this.listX() && mouseX < this.listX() + 108) {
-            SccGui.tooltip(g, this.font, List.of(Component.literal("Where the trades' results go."),
-                    Component.literal("network: back into the system"),
-                    Component.literal("nearby: chests and machines around this block first, the rest to the system")), mouseX, mouseY);
-        }
+        g.fill(this.leftPos + 94, by - 3, this.leftPos + this.imageWidth - 6, by - 2, SccGui.BORDER);
+        String where = switch (be.output()) {
+            case NETWORK -> "network";
+            case NEARBY -> "nearby, then network";
+            case PLAYER -> "to me";
+        };
+        this.button(g, this.listX(), by + 4, 158, "Results go to: " + where, mouseX, mouseY);
+        SccGui.clipped(g, this.font, be.stateText(), this.listX(), by + 26, 160, SccGui.MUTED);
     }
 
     private void button(GuiGraphics g, int x, int y, int w, String label, int mx, int my) {
         boolean hover = mx >= x && mx < x + w && my >= y && my < y + 16;
         g.fill(x, y, x + w, y + 16, hover ? SccGui.ROW_HOVER : SccGui.PLATE_BG);
         SccGui.outline(g, x, y, w, 16, hover ? SccGui.ACCENT : SccGui.BORDER);
-        g.drawString(this.font, label, x + 6, y + 4, SccGui.TEXT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(label, w - 8), x + 5, y + 4, SccGui.TEXT, false);
     }
 
     private void item(GuiGraphics g, ItemStack stack, int x, int y, int mx, int my) {

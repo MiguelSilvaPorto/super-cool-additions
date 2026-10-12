@@ -2,7 +2,7 @@
   "render_type": "minecraft:translucent",
   "textures": {
     "glass": "minecraft:block/glass",
-    "floor": "sccadd:block/village_trader_floor",
+    "floor": "sccadd:block/village_chamber_floor",
     "particle": "minecraft:block/glass"
   },
   "elements": [

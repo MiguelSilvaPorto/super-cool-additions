@@ -7,7 +7,7 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "sccadd:village_trader"
+          "name": "sccadd:village_chamber"
         }
       ],
       "conditions": [

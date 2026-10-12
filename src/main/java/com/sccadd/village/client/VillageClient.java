@@ -16,7 +16,7 @@ public final class VillageClient {
     }
 
     private static void renderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerBlockEntityRenderer(VillageRegistry.VILLAGE_BE.get(), context -> new VillageBlockRenderer());
+        event.registerBlockEntityRenderer(VillageRegistry.CHAMBER_BE.get(), context -> new VillageChamberRenderer(context));
     }
 
     private static void screens(RegisterMenuScreensEvent event) {
