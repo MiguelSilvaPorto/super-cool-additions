@@ -68,7 +68,7 @@ repositories {
 
 dependencies {
     // Compile against the exact mods of the test instance.
-    compileOnly files('libs/scc-1.4.0.jar', 'libs/appliedenergistics2-19.2.18.jar')
+    compileOnly files('libs/scc-1.4.0.jar', 'libs/appliedenergistics2-19.2.18.jar', 'libs/easy-villagers-neoforge-1.21.1-1.1.47.jar')
 
     // For dev runs: the same jars plus AE2's dependencies (GuideME, sodium only client-visible).
     runtimeOnly files(

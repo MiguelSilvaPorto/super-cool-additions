@@ -56,3 +56,10 @@ type = "optional"
 versionRange = "[19.0.0,)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.sccadd]]
+modId = "easy_villagers"
+type = "optional"
+versionRange = "[1.1.0,)"
+ordering = "AFTER"
+side = "BOTH"

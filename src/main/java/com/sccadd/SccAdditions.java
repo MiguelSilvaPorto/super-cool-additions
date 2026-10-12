@@ -27,6 +27,10 @@ public final class SccAdditions {
         container.registerConfig(ModConfig.Type.COMMON, SccAddConfig.SPEC);
         modBus.addListener(SccAdditions::registerPayloads);
         modBus.addListener(SccAdditions::registerCapabilities);
+        if (ModList.get().isLoaded("easy_villagers")) {
+            // The Village Simulator needs Easy Villagers' villager items.
+            com.sccadd.village.VillageRegistry.init(modBus);
+        }
         if (ModList.get().isLoaded("ae2")) {
             // Loaded only when AE2 is present; the class references AE2 types.
             com.sccadd.ae2.Ae2BridgeRegister.init(modBus);
