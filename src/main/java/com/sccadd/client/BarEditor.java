@@ -89,7 +89,7 @@ public final class BarEditor {
             return false;
         }
         for (Cell cell : barCells((TerminalBarAccess) (Object) bar)) {
-            if (!EDIT_ID.equals(cell.id()) && cell.over(mx, my)) {
+            if (cell.over(mx, my)) {
                 return true;
             }
         }
@@ -100,7 +100,8 @@ public final class BarEditor {
     public static void frame(GuiGraphics g, int mx, int my, TerminalBar terminalBar) {
         if (!editing) {
             dragId = null;
-            wasDown = false;
+            // a press that starts editing must not count as a new press once editing is on
+            wasDown = Minecraft.getInstance().mouseHandler.isLeftPressed();
             return;
         }
         TerminalBarAccess bar = (TerminalBarAccess) (Object) terminalBar;
@@ -138,6 +139,19 @@ public final class BarEditor {
         }
 
         boolean down = minecraft.mouseHandler.isLeftPressed();
+        // The editor's own button turns editing off from here, so it works whatever else is on top of the bar.
+        if (down && !wasDown && dragId == null) {
+            for (Cell cell : pinned) {
+                if (EDIT_ID.equals(cell.id()) && cell.over(mx, my)) {
+                    editing = false;
+                    dragId = null;
+                    wasDown = true;
+                    bar.sccadd$rebuild().run();
+                    g.pose().popPose();
+                    return;
+                }
+            }
+        }
         if (down && !wasDown && dragId == null) {
             for (Cell cell : pinned) {
                 if (!EDIT_ID.equals(cell.id()) && cell.over(mx, my)) {
