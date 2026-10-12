@@ -11,4 +11,7 @@ public interface BigRow {
     long sccadd$intervalSeconds();
 
     void sccadd$setIntervalSeconds(long seconds);
+
+    /** True while an order this row started is still being crafted. */
+    boolean sccadd$jobRunning();
 }

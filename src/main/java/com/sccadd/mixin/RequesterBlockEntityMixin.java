@@ -172,6 +172,37 @@ public abstract class RequesterBlockEntityMixin implements ChainHolder {
         ((NetworkBlockEntityInvoker) (Object) this).sccadd$sync();
     }
 
+    /**
+     * SCC's setters zero the row's schedule (cooldown, next order, waiting). With an order still being
+     * crafted that makes the very next tick ask for a second plan and start another job on the same
+     * machines, and the first job is no longer watched - it is left half done with items inside. While
+     * a job runs, an edit changes the numbers but keeps the schedule.
+     */
+    @Unique
+    private long[] sccadd$schedule;
+
+    @Inject(method = {"setAmount", "setBatch", "setInterval"}, at = @At("HEAD"), require = 0)
+    private void sccadd$keepSchedule(int index, int value, CallbackInfo ci) {
+        this.sccadd$schedule = null;
+        if (index >= 0 && index < 6 && ((BigRow) (Object) this.rows[index]).sccadd$jobRunning()) {
+            RequesterBlockEntity.Row row = this.rows[index];
+            this.sccadd$schedule = new long[] {index, row.cooldown, row.nextAt, row.period, row.waiting};
+        }
+    }
+
+    @Inject(method = {"setAmount", "setBatch", "setInterval"}, at = @At("TAIL"), require = 0)
+    private void sccadd$restoreSchedule(int index, int value, CallbackInfo ci) {
+        long[] kept = this.sccadd$schedule;
+        this.sccadd$schedule = null;
+        if (kept != null) {
+            RequesterBlockEntity.Row row = this.rows[(int) kept[0]];
+            row.cooldown = (int) kept[1];
+            row.nextAt = kept[2];
+            row.period = (int) kept[3];
+            row.waiting = (int) kept[4];
+        }
+    }
+
     @Unique
     private boolean sccadd$chained(RequesterBlockEntity.Row row) {
         for (int i = 0; i < 6; i++) {

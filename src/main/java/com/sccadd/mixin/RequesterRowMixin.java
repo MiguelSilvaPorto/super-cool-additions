@@ -20,6 +20,14 @@ public abstract class RequesterRowMixin implements BigRow {
     @Shadow
     public int interval;
 
+    @Shadow
+    de.scc.calculator.network.CraftJob job;
+
+    @Override
+    public boolean sccadd$jobRunning() {
+        return this.job != null && !this.job.isFinished();
+    }
+
     @Unique
     private long sccadd$seconds;
 
