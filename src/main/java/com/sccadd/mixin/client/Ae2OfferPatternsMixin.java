@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Hooks the moment the offer answer is built: the item list goes back the normal
@@ -24,12 +25,12 @@ public abstract class Ae2OfferPatternsMixin {
     private static final int CHUNK_CHARS = 60_000;
 
     @Inject(method = "compute", at = @At("HEAD"), require = 0)
-    private static void sccadd$offerTarget(PlanRequestPayload payload, CallbackInfo ci) {
+    private static void sccadd$offerTarget(PlanRequestPayload payload, CallbackInfoReturnable<Object> cir) {
         SccPatternWriter.setTarget(payload.requester());
     }
 
     @Inject(method = "compute", at = @At("RETURN"), require = 0)
-    private static void sccadd$clearOfferTarget(PlanRequestPayload payload, CallbackInfo ci) {
+    private static void sccadd$clearOfferTarget(PlanRequestPayload payload, CallbackInfoReturnable<Object> cir) {
         SccPatternWriter.clearTarget();
     }
 
