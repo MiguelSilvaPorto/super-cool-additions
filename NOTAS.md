@@ -61,9 +61,35 @@ Storage Bus do AE2":
   rede SCC — ida e volta (extrair e inserir).
 - O inverso (SCC via Storage Connector em bloco AE2) já funciona bem — manter.
 
-**Estado atual:** o SCC expõe a rede ao AE2 apenas pela **Antena de Rede** (mount
-automático de `MEStorage` no grid — sem partição/filtro/prioridade, e exige a antena).
-Não dá para plugar um Storage Bus num bloco SCC e ver a rede como inventário.
+**DECISÃO NOVA (usuário): a ANTENA SAI do fluxo.** Motivo: em servidor grande com
+duas redes SCC, a antena (que registra um nó AE2 genérico no grid) faz o AE2
+"quebrar junto com o SCC". Em vez dela, usar **somente o par Transmissor + Receptor**:
+o transmissor fica na rede SCC, o receptor vai para o lado do AE2 — assim cada par
+escolhe exatamente qual rede SCC conversa com qual rede AE2.
+
+**O que a ponte AE2 faz hoje (tudo na antena):**
+- `Ae2Bridge.Node` (por antena): `IStorageProvider` (monta a rede SCC no ME),
+  `IAEPowerStorage` (ponte AE2↔FE) e `ICraftingProvider` (oferta + padrões).
+- `Ae2AntennaBlockEntity extends NetworkAntennaBlockEntity` + capability
+  `IN_WORLD_GRID_NODE_HOST` registrada só no `NETWORK_ANTENNA_BE`.
+- A resposta da oferta (`RequesterPlanPayload`, rows -8/-9) só é roteada para
+  `NetworkAntennaBlockEntity`.
+
+**Plano de implementação (receptor como ponte, sem antena):**
+- [ ] Registrar `AECapabilities.IN_WORLD_GRID_NODE_HOST` no `WIRELESS_RECEIVER_BE`
+      (nó próprio do addon, um por receptor).
+- [ ] Serviços do nó:
+      - `IStorageProvider` montando um `MEStorage` sobre o `NetworkView` do receptor
+        (itens; fluidos depois — ver seção 4);
+      - `ICraftingProvider` reutilizando `SccAe2PatternStore`/`SccAe2Patterns` (padrões);
+      - oferta: `FuelOrders.request(..., -9)` + mixin no `RequesterPlanPayload` para
+        rotear a resposta -9 também para receptores;
+      - entrega: poller próprio (quando `crafting.isRequesting(key)`, extrai da rede
+        SCC e insere no ME) — mesmo fluxo da antena;
+      - `IAEPowerStorage`: decidir se a ponte de energia também vai pro receptor.
+- [ ] Config: modo da ponte AE2 (`receiver` / `antenna` / `both`) para o usuário
+      escolher quem fica no fluxo.
+- [ ] Garantir que dois pares (duas redes SCC × dois AE2) não se misturem.
 
 **Investigação já feita (AE2 19.2.18):**
 - Existe `appeng.api.AECapabilities.ME_STORAGE` (`BlockCapability<MEStorage, Direction>`)
@@ -72,12 +98,6 @@ Não dá para plugar um Storage Bus num bloco SCC e ver a rede como inventário.
   do SCC com um `MEStorage`/`IItemHandler` virtual em cima do `NetworkView`.
 - Reaproveitar o padrão do próprio SCC (`Ae2MeStore`, `Ae2Bridge.Storage`) incluindo
   a guarda anti-recursão (`BridgeGuard`).
-- Decidir onde expor: só na Antena (bridge dedicado) ou em **todo bloco de
-  armazenamento** (mais próximo de "pluga o bus em qualquer lugar").
-- Checar comportamento do Storage Bus com `IItemHandler` (slots virtuais, prioridade,
-  filtro por partição) vs `MEStorage` direto.
-
-**Prioridade combinada:** implementar depois do filtro de variantes.
 
 ## 4. Líquidos entre AE2 e SCC (pedido do usuário — novo)
 

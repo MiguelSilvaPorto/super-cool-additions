@@ -10,7 +10,9 @@
     "TerminalAe2PatternsMixin",
     "Ae2ProviderPatternsMixin",
     "Ae2NodePatternsMixin",
-    "Ae2ProviderDebugMixin"
+    "Ae2ProviderDebugMixin",
+    "PlannerPickMixin",
+    "PlanAnswerMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",

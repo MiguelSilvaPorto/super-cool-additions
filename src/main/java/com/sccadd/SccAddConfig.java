@@ -19,6 +19,7 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue AE2_PATTERNS_IN_SCC;
     public static final ModConfigSpec.BooleanValue SCC_PATTERNS_IN_AE2;
     public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
+    public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
 
@@ -102,6 +103,21 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment(
+                "Planner selection.",
+                "SCC sends planning requests (orders, AE2 offers) to a player's client, because only",
+                "the client has the recipe viewer. Its own pick is always the first player in the list;",
+                "with two players, an AFK or minimised first player stalls the flow for two minutes.",
+                "With this on, the player who answered most recently is preferred and otherwise the",
+                "choice rotates through the online players.")
+                .push("planner");
+
+        PLANNER_SMART_PICK = builder
+                .comment("Pick a planner that actually answers instead of always the first player.")
+                .define("smartPick", true);
+
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -142,6 +158,10 @@ public final class SccAddConfig {
 
     public static boolean ae2DebugOffer() {
         return AE2_DEBUG_OFFER.get();
+    }
+
+    public static boolean smartPlanner() {
+        return PLANNER_SMART_PICK.get();
     }
 
     public static boolean resilientAnalysisCache() {
