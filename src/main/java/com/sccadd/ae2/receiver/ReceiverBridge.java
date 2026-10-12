@@ -61,6 +61,7 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
     private int timer;
     private long askedAt = Long.MIN_VALUE;
     private long lastPatternLog;
+    private long seenPatternVersion;
     private boolean created;
 
     ReceiverBridge(WirelessReceiverBlockEntity be) {
@@ -158,6 +159,12 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
         ICraftingService crafting = node.getGrid().getCraftingService();
         if (crafting.getCpus().isEmpty()) {
             return;
+        }
+        // Recipes arrived in chunks? Tell AE2 to re-query the patterns.
+        long version = SccAe2PatternStore.version(this.be);
+        if (version != this.seenPatternVersion) {
+            this.seenPatternVersion = version;
+            ICraftingProvider.requestUpdate(this.main);
         }
         NetworkView view = this.be.network();
         if (view == null || !view.online()) {

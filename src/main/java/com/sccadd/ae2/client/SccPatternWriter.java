@@ -6,40 +6,44 @@ import de.scc.calculator.calc.SccRecipe;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.client.screen.CraftSim;
 import de.scc.calculator.network.CraftStep;
+import net.minecraft.core.BlockPos;
 
 /**
- * Appends the recipe lines for every offered item to SCC's "what can SCC build"
- * answer. The server turns them into real AE2 patterns (see
- * {@code com.sccadd.ae2.SccAe2Patterns}); SCC itself ignores lines it cannot
- * decode, so old servers stay compatible.
+ * Turns SCC's offer list into recipe lines for AE2. No size ceiling: the text is
+ * split into chunks by the caller and sent in small packets, so a big pack is
+ * fine. The only guards are for recipe <em>fidelity</em> - a recipe with more
+ * ingredients or options than these is skipped rather than sent incomplete.
  */
 public final class SccPatternWriter {
-    /**
-     * No arbitrary cap: whatever SCC's own offer list says it can build is sent
-     * with a real recipe. SCC already caps its offer (8000 items); the wire codec
-     * handles up to 16 MB with automatic compression, so these numbers are just
-     * an emergency stop far above any real pack.
-     */
-    public static final int MAX_PATTERNS = 20_000;
-    public static final int MAX_CHARS = 12_000_000;
     public static final int MAX_INPUTS = 27;
     public static final int MAX_OPTIONS = 128;
+
+    /** Target of the running offer computation (the bridge block that asked). */
+    private static final ThreadLocal<BlockPos> TARGET = new ThreadLocal<>();
 
     private SccPatternWriter() {
     }
 
-    public static String append(String offerText) {
+    public static void setTarget(BlockPos pos) {
+        TARGET.set(pos);
+    }
+
+    public static void clearTarget() {
+        TARGET.remove();
+    }
+
+    public static BlockPos target() {
+        return TARGET.get();
+    }
+
+    /** The recipe lines ({@code P\t...}) for every item in the offer text. */
+    public static String patternsFor(String offerText) {
         RecipeBook book = AnalysisManager.get().book();
-        if (book == null) {
-            return offerText;
+        if (book == null || offerText == null || offerText.isEmpty()) {
+            return "";
         }
-        StringBuilder out = new StringBuilder(offerText.length() + 8_192);
-        out.append(offerText);
-        int patterns = 0;
+        StringBuilder out = new StringBuilder(8_192);
         for (String line : offerText.split("\n")) {
-            if (patterns >= MAX_PATTERNS || out.length() > MAX_CHARS) {
-                break;
-            }
             if (line.isBlank()) {
                 continue;
             }
@@ -54,7 +58,6 @@ public final class SccPatternWriter {
             String encoded = encode(key, recipe);
             if (encoded != null) {
                 out.append(encoded);
-                patterns++;
             }
         }
         return out.toString();

@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class SccAe2PatternStore {
     private static final Map<Object, Entry> ENTRIES = new WeakHashMap<>();
+    private static final Map<Object, Long> VERSIONS = new WeakHashMap<>();
 
     private SccAe2PatternStore() {
     }
@@ -24,6 +25,12 @@ public final class SccAe2PatternStore {
         List<appeng.api.crafting.IPatternDetails> patterns;
     }
 
+    /** Bumped whenever the recipes of a bridge change, so it can tell AE2 to re-query. */
+    public static synchronized long version(Object be) {
+        Long version = VERSIONS.get(be);
+        return version == null ? 0L : version;
+    }
+
     public static synchronized void setRecipes(Object be, List<SccAe2Recipe> recipes) {
         Entry entry = ENTRIES.computeIfAbsent(be, key -> new Entry());
         if (entry.recipes.equals(recipes)) {
@@ -31,6 +38,7 @@ public final class SccAe2PatternStore {
         }
         entry.recipes = recipes;
         entry.patterns = null;
+        VERSIONS.merge(be, 1L, Long::sum);
     }
 
     public static synchronized List<SccAe2Recipe> recipes(Object be) {
@@ -51,6 +59,7 @@ public final class SccAe2PatternStore {
 
     public static synchronized void clear(Object be) {
         ENTRIES.remove(be);
+        VERSIONS.remove(be);
     }
 
     /** Compatibility helper for callers that still hold an antenna reference. */

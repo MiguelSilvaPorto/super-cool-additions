@@ -21,9 +21,11 @@ neoForge {
     runs {
         client {
             client()
+            gameDirectory = layout.projectDirectory.dir('run')
         }
         server {
             server()
+            gameDirectory = layout.projectDirectory.dir('run-server')
         }
     }
 
@@ -74,7 +76,7 @@ tasks.register('copyServerMods', Sync) {
     from 'libs'
     include '*.jar'
     exclude clientOnlyMods
-    into layout.projectDirectory.dir('run/mods')
+    into layout.projectDirectory.dir('run-server/mods')
 }
 
 tasks.matching { it.name == 'runClient' || it.name == 'prepareClientRun' }.configureEach {

@@ -1,0 +1,65 @@
+#Breaking Calculator performance.
+#The Breaking Calculator simulates block breaks: loot roll, drop event, insertion.
+#These switches make one simulated break much cheaper and cap how much time all
+#Breaking Calculators together may spend inside one server tick.
+[breaking]
+	#Milliseconds one Breaking Calculator may spend per server tick (0.25 - 20).
+	#The SCC default is 2 ms. Lower = smoother server, machines run a bit slower.
+	# Default: 2.0
+	# Range: 0.25 ~ 20.0
+	budgetMs = 2.0
+	#Milliseconds ALL Breaking Calculators together may spend per server tick (0.25 - 50).
+	#Stops ten Singularity calculators from stacking their budgets into one laggy tick.
+	# Default: 6.0
+	# Range: 0.25 ~ 50.0
+	totalBudgetMs = 6.0
+	#Fire NeoForge's BlockDropsEvent for every simulated break (like a real player break).
+	#On: enchantments and mods that hook block drops work (Boon of the Earth, Apotheosis...).
+	#Off: less work per break, but those drop modifiers are ignored by the Breaking Calculator.
+	fireDropsEvent = true
+	#Sync the worn tool once per tick instead of once per broken block.
+	#Only affects the tool durability display of grades below Singularity.
+	deferToolSync = true
+	#Reuse the loot parameters (origin, tool, player, block state) across the blocks
+	#of one tick instead of rebuilding them for every single block.
+	cacheLootParams = true
+	#Add fine-grained marks for the breaking path to /scc profile
+	#(work, loot roll, drop event, insertion). Purely for measuring.
+	profile = true
+
+#Applied Energistics 2 integration.
+#Requires AE2 and a Storage Connector / Network Antenna on an AE2 network.
+[ae2]
+	#Show the ingredients of AE2 patterns in the SCC calculator.
+	#AE2 craftable items then appear in the recipe tree with what the pattern really needs,
+	#instead of one opaque 'AE2 can build it' step.
+	patternsInScc = true
+	#Offer SCC recipes to AE2 as real patterns (with ingredients).
+	#Lets AE2 plan the full tree through SCC instead of a leaf it cannot break down.
+	sccPatternsInAe2 = true
+	#Write the state of the 'what can SCC build' offer to logs/scc.log every 5 seconds.
+	#Diagnosis aid: shows active/cpus/terminal/offer/emitted. Turn off when done.
+	debugOffer = true
+	#The Wireless Receiver acts as an AE2 bridge, like the Network Antenna.
+	#Put the receiver next to the AE2 network: it mounts the SCC network as ME storage
+	#and offers the SCC recipes as real patterns - no antenna needed.
+	bridgeOnReceiver = true
+
+#Recipe analysis cache.
+#SCC throws its analysis away when mod versions or almost any setting changes.
+#On big packs (ATM10: ~279k recipes) that costs 8-12 minutes without a usable system.
+#With this on, such changes only mark the cache stale: it is used immediately and
+#refreshed in the background, like SCC already does for changed recipes.
+[analysis]
+	#Keep the analysis cache usable across mod updates and settings changes.
+	resilientCache = true
+
+#Planner selection.
+#SCC sends planning requests (orders, AE2 offers) to a player's client, because only
+#the client has the recipe viewer. Its own pick is always the first player in the list;
+#with two players, an AFK or minimised first player stalls the flow for two minutes.
+#With this on, the player who answered most recently is preferred and otherwise the
+#choice rotates through the online players.
+[planner]
+	#Pick a planner that actually answers instead of always the first player.
+	smartPick = true

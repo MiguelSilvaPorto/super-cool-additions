@@ -2,31 +2,63 @@ package com.sccadd.mixin.client;
 
 import com.sccadd.SccAddConfig;
 import com.sccadd.ae2.client.SccPatternWriter;
+import com.sccadd.net.SccPatternsPayload;
 import de.scc.calculator.client.RequesterPlanner;
+import de.scc.calculator.network.PlanRequestPayload;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Hooks the moment the offer answer is built: the plain item list gets recipe
- * lines appended so AE2 can see the actual ingredients SCC would need.
+ * Hooks the moment the offer answer is built: the item list goes back the normal
+ * way, and the recipe lines follow as small chunks ({@link SccPatternsPayload}),
+ * so even a huge pack never produces one oversized packet.
  */
 @Mixin(value = RequesterPlanner.class, remap = false)
 public abstract class Ae2OfferPatternsMixin {
+    private static final int CHUNK_CHARS = 60_000;
+
+    @Inject(method = "compute", at = @At("HEAD"), require = 0)
+    private static void sccadd$offerTarget(PlanRequestPayload payload, CallbackInfo ci) {
+        SccPatternWriter.setTarget(payload.requester());
+    }
+
+    @Inject(method = "compute", at = @At("RETURN"), require = 0)
+    private static void sccadd$clearOfferTarget(PlanRequestPayload payload, CallbackInfo ci) {
+        SccPatternWriter.clearTarget();
+    }
+
     @Redirect(
             method = "offer",
             at = @At(value = "INVOKE", target = "Ljava/lang/StringBuilder;toString()Ljava/lang/String;"),
             require = 0
     )
-    private static String sccadd$appendPatterns(StringBuilder sb) {
+    private static String sccadd$sendPatternChunks(StringBuilder sb) {
         String base = sb.toString();
         if (!SccAddConfig.sccPatternsInAe2()) {
             return base;
         }
         try {
-            return SccPatternWriter.append(base);
+            BlockPos target = SccPatternWriter.target();
+            String patterns = SccPatternWriter.patternsFor(base);
+            if (target != null && !patterns.isEmpty()) {
+                int count = (patterns.length() + CHUNK_CHARS - 1) / CHUNK_CHARS;
+                Minecraft minecraft = Minecraft.getInstance();
+                for (int index = 0; index < count; index++) {
+                    String part = patterns.substring(index * CHUNK_CHARS,
+                            Math.min(patterns.length(), (index + 1) * CHUNK_CHARS));
+                    SccPatternsPayload payload = new SccPatternsPayload(target, index, count, part);
+                    minecraft.execute(() -> PacketDistributor.sendToServer(payload));
+                }
+            }
         } catch (Throwable failed) {
-            return base;
+            // never break the offer because of the addon
         }
+        return base;
     }
 }

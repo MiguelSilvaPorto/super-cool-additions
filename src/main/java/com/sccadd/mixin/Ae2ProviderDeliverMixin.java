@@ -2,12 +2,14 @@ package com.sccadd.mixin;
 
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.MEStorage;
 import com.sccadd.SccAddConfig;
 import com.sccadd.ae2.SccAe2Delivery;
+import com.sccadd.ae2.SccAe2PatternStore;
 import de.scc.calculator.calc.StackKey;
 import de.scc.calculator.network.NetworkAntennaBlockEntity;
 import de.scc.calculator.network.NetworkView;
@@ -47,6 +49,9 @@ public abstract class Ae2ProviderDeliverMixin {
     @Unique
     private int sccadd$deliverTimer;
 
+    @Unique
+    private long sccadd$seenPatternVersion;
+
     @Inject(method = "tick", at = @At("TAIL"), require = 0)
     private void sccadd$deliverPatternOutputs(CallbackInfo ci) {
         if (!SccAddConfig.sccPatternsInAe2()) {
@@ -66,6 +71,12 @@ public abstract class Ae2ProviderDeliverMixin {
         IGridNode gridNode = this.node.getNode();
         if (gridNode == null || !gridNode.isActive()) {
             return;
+        }
+        // Recipes arrived in chunks? Tell AE2 to re-query the patterns.
+        long version = SccAe2PatternStore.version(this.be);
+        if (version != this.sccadd$seenPatternVersion) {
+            this.sccadd$seenPatternVersion = version;
+            ICraftingProvider.requestUpdate(this.node);
         }
         ICraftingService crafting = gridNode.getGrid().getCraftingService();
         MEStorage inventory = gridNode.getGrid().getStorageService().getInventory();
