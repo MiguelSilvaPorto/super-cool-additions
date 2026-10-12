@@ -17,6 +17,7 @@
     "Ae2ReceiverTickMixin",
     "Ae2ReceiverRemoveMixin",
     "Ae2FluidConnectorMixin",
+    "Ae2ConnectorStateMixin",
     "ConnectorAllowsInvoker"
   ],
   "client": [
