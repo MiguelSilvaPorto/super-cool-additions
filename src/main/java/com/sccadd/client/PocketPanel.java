@@ -71,12 +71,10 @@ public final class PocketPanel {
         // Down arrow = export (system -> inventory); up arrow = import (inventory -> system).
         out.add(new Button("arrow_down", Component.literal("Export"),
                 Component.literal("Choose, slot by slot, what the system keeps in your inventory: items, fluids in buckets and tanks, and whether to craft more when it runs out."),
-                () -> hasRules(false), () -> Minecraft.getInstance().setScreen(
-                        new SlotRulesScreen(Minecraft.getInstance().screen, SlotRulesScreen.Mode.EXPORT))));
+                () -> hasRules(false), () -> SlotRulesScreen.open(Minecraft.getInstance().screen, SlotRulesScreen.Mode.EXPORT)));
         out.add(new Button("arrow_up", Component.literal("Import"),
                 Component.literal("Choose, slot by slot, what goes into the system: the items, the fluid inside a bucket or tank, or both."),
-                () -> hasRules(true), () -> Minecraft.getInstance().setScreen(
-                        new SlotRulesScreen(Minecraft.getInstance().screen, SlotRulesScreen.Mode.IMPORT))));
+                () -> hasRules(true), () -> SlotRulesScreen.open(Minecraft.getInstance().screen, SlotRulesScreen.Mode.IMPORT)));
         out.add(new Button("controller", Component.translatable("scc.gui.terminal.controller"),
                 Component.translatable("scc.gui.terminal.controller.tip"), () -> false, () ->
                 PacketDistributor.sendToServer(new WirelessToolPayload(crafting ? 3 : 2))));

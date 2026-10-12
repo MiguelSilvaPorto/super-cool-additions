@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -90,7 +93,17 @@ public final class DropsFast {
             if (tableKey == BuiltInLootTables.EMPTY) {
                 return List.of();
             }
-            return level.getServer().reloadableRegistries().getLootTable(tableKey).getRandomItems(params);
+            LootTable table = level.getServer().reloadableRegistries().getLootTable(tableKey);
+            if (SccAddConfig.cacheDeterministicLoot()) {
+                boolean fixed = LootDeterminism.isDeterministic(table);
+                if (SccAddConfig.profile() && CLASSIFIED.add(tableKey) && CLASSIFIED.size() <= 60) {
+                    SccLog.info("sccadd", "loot table " + tableKey.location() + ": " + (fixed ? "fixed drops (cached)" : "random (rolled every time)"));
+                }
+                if (fixed) {
+                    return fixedDrops(table, state, tool, params);
+                }
+            }
+            return table.getRandomItems(params);
         } catch (Throwable failed) {
             SccLog.caught("sccadd", "fast loot roll for " + state, failed);
             return Block.getDrops(state, level, pos, be, entity, tool);
@@ -99,6 +112,53 @@ public final class DropsFast {
                 SccProfiler.end("sccadd loot roll", profile);
             }
         }
+    }
+
+    private record DropKey(BlockState state, Item tool, int enchantments) {
+    }
+
+    private static final java.util.Set<ResourceKey<LootTable>> CLASSIFIED = new java.util.HashSet<>();
+    private static final Map<LootTable, Map<DropKey, List<ItemStack>>> FIXED = new WeakHashMap<>();
+
+    /** A table that provably always drops the same thing: roll it once per block state and tool, then copy. */
+    private static synchronized List<ItemStack> fixedDrops(LootTable table, BlockState state, ItemStack tool, LootParams params) {
+        ItemEnchantments enchantments = tool.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
+        DropKey key = new DropKey(state, tool.getItem(), enchantments.hashCode());
+        Map<DropKey, List<ItemStack>> perTable = FIXED.computeIfAbsent(table, t -> new java.util.HashMap<>());
+        List<ItemStack> known = perTable.get(key);
+        if (known == null) {
+            known = new ArrayList<>();
+            for (ItemStack stack : table.getRandomItems(params)) {
+                known.add(stack.copy());
+            }
+            perTable.put(key, known);
+        }
+        List<ItemStack> out = new ArrayList<>(known.size());
+        for (ItemStack stack : known) {
+            out.add(stack.copy());
+        }
+        return out;
+    }
+
+    /** Item entities are costly to construct and never leave the event, so they are reused. */
+    private static final List<ItemEntity> CARRIERS = new ArrayList<>();
+
+    private static ItemEntity carrier(ServerLevel server, BlockPos pos, ItemStack stack, int index) {
+        if (index < CARRIERS.size()) {
+            ItemEntity reused = CARRIERS.get(index);
+            if (reused.level() == server) {
+                reused.setItem(stack);
+                reused.setPos(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+                return reused;
+            }
+        }
+        ItemEntity fresh = new ItemEntity(server, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, stack);
+        if (index < CARRIERS.size()) {
+            CARRIERS.set(index, fresh);
+        } else if (index < 16) {
+            CARRIERS.add(fresh);
+        }
+        return fresh;
     }
 
     /**
@@ -116,9 +176,10 @@ public final class DropsFast {
         long profile = SccAddConfig.profile() ? SccProfiler.begin() : 0L;
         try {
             List<ItemEntity> carriers = new ArrayList<>(drops.size());
+            int used = 0;
             for (ItemStack drop : drops) {
                 if (!drop.isEmpty()) {
-                    carriers.add(new ItemEntity(server, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, drop.copy()));
+                    carriers.add(carrier(server, pos, drop.copy(), used++));
                 }
             }
             BlockDropsEvent event = new BlockDropsEvent(server, pos, state, null, carriers, breaker, tool);

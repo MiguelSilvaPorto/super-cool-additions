@@ -14,6 +14,11 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue BREAKING_FIRE_DROPS_EVENT;
     public static final ModConfigSpec.BooleanValue BREAKING_DEFER_TOOL_SYNC;
     public static final ModConfigSpec.BooleanValue BREAKING_CACHE_LOOT_PARAMS;
+    public static final ModConfigSpec.BooleanValue BREAKING_FIXED_LOOT;
+    public static final ModConfigSpec.BooleanValue BREAKING_BATCH;
+    public static final ModConfigSpec.IntValue BREAKING_BUFFER_BASE;
+    public static final ModConfigSpec.IntValue BREAKING_ACCUMULATE;
+    public static final ModConfigSpec.IntValue REQUESTER_MAX_ORDER;
     public static final ModConfigSpec.BooleanValue BREAKING_PROFILE;
 
     public static final ModConfigSpec.BooleanValue AE2_PATTERNS_IN_SCC;
@@ -27,6 +32,7 @@ public final class SccAddConfig {
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
     public static final ModConfigSpec.BooleanValue TERMINAL_CLEAN_VARIANTS;
+    public static final ModConfigSpec.IntValue MAGNET_RANGE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -63,6 +69,32 @@ public final class SccAddConfig {
                 .comment("Reuse the loot parameters (origin, tool, player, block state) across the blocks",
                         "of one tick instead of rebuilding them for every single block.")
                 .define("cacheLootParams", true);
+
+        BREAKING_FIXED_LOOT = builder
+                .comment("Roll a loot table only once when it provably always drops the same items",
+                        "(logs, stone, planks...) and copy the result for every further block.",
+                        "Tables with any random or unknown part (fortune, chances, mod entries) are never cached.")
+                .define("cacheFixedLoot", true);
+
+        BREAKING_BATCH = builder
+                .comment("Batch mode: instead of simulating every broken block, the calculator takes the blocks",
+                        "from the network, sums their drops from dice tables learned from real results,",
+                        "delivers the total once and spends the tool's durability as usual.",
+                        "Off = SCC's behaviour, block by block.")
+                .define("batch", true);
+
+        BREAKING_BUFFER_BASE = builder
+                .comment("Size of the calculator's hidden item buffer (items) for a Basic calculator.",
+                        "It doubles with every tier: 256 / 512 / 1024 / 2048 / 4096 / 8192 by default.",
+                        "Results that do not fit into the inventory above wait here; when it is full the calculator stops.")
+                .defineInRange("bufferBase", 256, 16, 65536);
+
+        BREAKING_ACCUMULATE = builder
+                .comment("Batch size the calculator waits for before it works (in blocks).",
+                        "Instead of working every tick with the few blocks that came due, it lets them pile up",
+                        "(at most ~1 s) and then breaks them in one go: fewer, bigger batches, far less overhead.",
+                        "Output arrives in bursts. 0 = work every tick as SCC does. Only used once a block's dice table is ready.")
+                .defineInRange("accumulate", 64, 0, 512);
 
         BREAKING_PROFILE = builder
                 .comment("Add fine-grained marks for the breaking path to /scc profile",
@@ -157,6 +189,25 @@ public final class SccAddConfig {
 
         builder.pop();
 
+        builder.comment("Pocket terminal magnet.").push("magnet");
+
+        MAGNET_RANGE = builder
+                .comment("How far (in blocks) the magnet pulls dropped items into the SCC network.",
+                        "SCC's own magnet only takes what touches you. 0 = off (SCC behaviour).")
+                .defineInRange("range", 16, 0, 64);
+
+        builder.pop();
+
+        builder.comment("Requester block.").push("requester");
+
+        REQUESTER_MAX_ORDER = builder
+                .comment("The most items one automatic order plans at once (SCC: 9999).",
+                        "The target stock itself can be far larger; the requester orders in steps of this size or the row's own step.",
+                        "A huge single plan can take a long time to compute, so raise it with care.")
+                .defineInRange("maxOrder", 100000, 1, 1_000_000_000);
+
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -177,6 +228,26 @@ public final class SccAddConfig {
 
     public static boolean deferToolSync() {
         return BREAKING_DEFER_TOOL_SYNC.get();
+    }
+
+    public static boolean batchBreaking() {
+        return BREAKING_BATCH.get();
+    }
+
+    public static int requesterMaxOrder() {
+        return REQUESTER_MAX_ORDER.get();
+    }
+
+    public static int accumulateTarget() {
+        return BREAKING_ACCUMULATE.get();
+    }
+
+    public static int bufferBase() {
+        return BREAKING_BUFFER_BASE.get();
+    }
+
+    public static boolean cacheDeterministicLoot() {
+        return BREAKING_FIXED_LOOT.get();
     }
 
     public static boolean cacheLootParams() {
@@ -217,6 +288,10 @@ public final class SccAddConfig {
 
     public static boolean smartPlanner() {
         return PLANNER_SMART_PICK.get();
+    }
+
+    public static int magnetRange() {
+        return MAGNET_RANGE.get();
     }
 
     public static boolean cleanVariants() {

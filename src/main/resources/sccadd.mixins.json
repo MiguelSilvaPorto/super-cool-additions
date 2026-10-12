@@ -6,6 +6,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "BreakingCalculatorPerfMixin",
+    "RequesterRowMixin",
+    "RequesterBlockEntityMixin",
     "NetworkBlockEntityInvoker",
     "TerminalAe2PatternsMixin",
     "Ae2ProviderPatternsMixin",
@@ -32,6 +34,8 @@
     "client.TerminalBarEntryAccess",
     "client.TerminalBarLayoutMixin",
     "client.TerminalBarAccess",
+    "client.AmountMathMixin",
+    "client.RequesterScreenMixin",
     "client.ContainerScreenAccess",
     "client.TerminalWirelessInvoker",
     "client.TerminalScreenBarEditMixin",
