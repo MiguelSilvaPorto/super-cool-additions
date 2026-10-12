@@ -82,6 +82,40 @@ public abstract class InterfaceScreenFluidMixin {
         cir.setReturnValue(out);
     }
 
+    /** Which fluid cell the mouse is over, in the template row (0) or the stock row (1), or -1. */
+    private int sccadd$fluidCell(double mx, double my, int[] row) {
+        int left = ((ContainerScreenAccess) this).sccadd$left();
+        int top = ((ContainerScreenAccess) this).sccadd$top();
+        int cell = Math.floorDiv((int) mx - (left + InterfaceMenu.SLOT_X), 18);
+        if (cell < 0 || cell >= InterfaceBlockEntity.SLOTS) {
+            return -1;
+        }
+        if (my >= top + InterfaceMenu.TEMPLATE_Y && my < top + InterfaceMenu.TEMPLATE_Y + 18) {
+            row[0] = 0;
+            return cell;
+        }
+        if (my >= top + InterfaceMenu.BUFFER_Y && my < top + InterfaceMenu.BUFFER_Y + 18) {
+            row[0] = 1;
+            return cell;
+        }
+        return -1;
+    }
+
+    private static void sccadd$tank(GuiGraphics gfx, Fluid fluid, int x, int y, int fill) {
+        IClientFluidTypeExtensions ext = IClientFluidTypeExtensions.of(fluid);
+        TextureAtlasSprite sprite = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(ext.getStillTexture());
+        int tint = ext.getTintColor();
+        gfx.fill(x + 1, y + 1, x + 17, y + 17, 0xFF0B1116);
+        if (fill > 0) {
+            gfx.enableScissor(x + 1, y + 17 - fill, x + 17, y + 17);
+            gfx.blit(x + 1, y + 1, 0, 16, 16, sprite,
+                    (tint >> 16 & 255) / 255f, (tint >> 8 & 255) / 255f, (tint & 255) / 255f, 1f);
+            gfx.disableScissor();
+        }
+        gfx.renderOutline(x, y, 18, 18, 0xFF4FD1BE);
+    }
+
+    /** The template row shows the fluid; the stock row below shows the tank filling, with its amount. */
     @Inject(method = "sccRender", at = @At("TAIL"), require = 0)
     private void sccadd$drawFluids(GuiGraphics gfx, int mx, int my, float pt, CallbackInfo ci) {
         AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
@@ -91,9 +125,12 @@ public abstract class InterfaceScreenFluidMixin {
         }
         int left = ((ContainerScreenAccess) this).sccadd$left();
         int top = ((ContainerScreenAccess) this).sccadd$top();
-        int hover = this.templateAt(mx, my);
         var font = Minecraft.getInstance().font;
         InterfaceTanks tanks = ((com.sccadd.iface.TankHolder) be).sccadd$tanks();
+        int[] row = new int[1];
+        int hover = this.sccadd$fluidCell(mx, my, row);
+        Fluid hovered = null;
+        int hoveredAmount = 0;
         gfx.pose().pushPose();
         gfx.pose().translate(0, 0, 300);
         for (int i = 0; i < InterfaceBlockEntity.SLOTS; i++) {
@@ -102,21 +139,10 @@ public abstract class InterfaceScreenFluidMixin {
                 continue;
             }
             int x = left + InterfaceMenu.SLOT_X + i * 18;
-            int y = top + InterfaceMenu.TEMPLATE_Y;
             int amount = tanks.stocked(i);
-            IClientFluidTypeExtensions ext = IClientFluidTypeExtensions.of(fluid);
-            TextureAtlasSprite sprite = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(ext.getStillTexture());
-            int tint = ext.getTintColor();
-            // a tank, not an item: dark well, the fluid rising in it by how full it is
-            gfx.fill(x + 1, y + 1, x + 17, y + 17, 0xFF0B1116);
-            int fill = amount <= 0 ? 0 : Math.max(1, Math.min(16, amount * 16 / InterfaceTanks.CAPACITY));
-            if (fill > 0) {
-                gfx.enableScissor(x + 1, y + 17 - fill, x + 17, y + 17);
-                gfx.blit(x + 1, y + 1, 0, 16, 16, sprite,
-                        (tint >> 16 & 255) / 255f, (tint >> 8 & 255) / 255f, (tint & 255) / 255f, 1f);
-                gfx.disableScissor();
-            }
-            gfx.renderOutline(x, y, 18, 18, 0xFF4FD1BE);
+            sccadd$tank(gfx, fluid, x, top + InterfaceMenu.TEMPLATE_Y, 16);
+            int y = top + InterfaceMenu.BUFFER_Y;
+            sccadd$tank(gfx, fluid, x, y, amount <= 0 ? 0 : Math.max(1, Math.min(16, amount * 16 / InterfaceTanks.CAPACITY)));
             String text = amount >= 1000 ? (amount / 1000) + "B" : amount + "";
             gfx.pose().pushPose();
             gfx.pose().translate(x + 17 - font.width(text) * 0.5f, y + 11, 50);
@@ -124,15 +150,37 @@ public abstract class InterfaceScreenFluidMixin {
             gfx.drawString(font, text, 0, 0, 0xFFFFFFFF, true);
             gfx.pose().popPose();
             if (hover == i) {
-                final int shown = amount;
-                gfx.renderComponentTooltip(font, java.util.List.of(
-                        fluid.getFluidType().getDescription(),
-                        Component.literal("Fluid tank: " + shown + " / " + InterfaceTanks.CAPACITY + " mB"),
-                        Component.literal("Stocked from the network; pipes and tanks beside it take from it."),
-                        Component.literal("Fluid poured in from outside goes to the network."),
-                        Component.literal("Right-click with an empty cursor to clear.")), mx, my);
+                hovered = fluid;
+                hoveredAmount = amount;
             }
         }
         gfx.pose().popPose();
+        if (hovered != null) {
+            gfx.pose().pushPose();
+            gfx.pose().translate(0, 0, 400);
+            gfx.renderComponentTooltip(font, java.util.List.of(
+                    hovered.getFluidType().getDescription(),
+                    Component.literal("Fluid tank: " + hoveredAmount + " / " + InterfaceTanks.CAPACITY + " mB"),
+                    Component.literal("Stocked from the network; pipes and tanks beside it take from it."),
+                    Component.literal("Fluid poured in from outside goes to the network."),
+                    Component.literal("Right-click the template with an empty cursor to clear.")), mx, my);
+            gfx.pose().popPose();
+        }
+    }
+
+    /** SCC's own tooltip for a template cell would sit over ours: leave it out when the cell holds a fluid. */
+    @org.spongepowered.asm.mixin.injection.Redirect(method = "sccRender", at = @At(value = "INVOKE",
+            target = "Lde/scc/calculator/client/screen/SccGui;tooltip(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/gui/Font;Ljava/util/List;II)V"),
+            require = 0)
+    private void sccadd$ownTooltip(GuiGraphics gfx, net.minecraft.client.gui.Font font, java.util.List<Component> lines, int x, int y) {
+        int[] row = new int[1];
+        int cell = this.sccadd$fluidCell(x, y, row);
+        if (cell >= 0 && Minecraft.getInstance().level != null
+                && ((AbstractContainerScreen<?>) (Object) this).getMenu() instanceof InterfaceMenu menu
+                && Minecraft.getInstance().level.getBlockEntity(menu.pos()) instanceof InterfaceBlockEntity be
+                && InterfaceTanks.templateOf(be.filter().entry(cell)) != null) {
+            return;
+        }
+        de.scc.calculator.client.screen.SccGui.tooltip(gfx, font, lines, x, y);
     }
 }
