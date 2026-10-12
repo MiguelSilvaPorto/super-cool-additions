@@ -144,6 +144,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         }
         this.state = "installed";
         this.changed();
+        this.ensureOffers();
         player.displayClientMessage(Component.literal(wanted == Module.AUTO ? "Auto Trader installed." : "Trader installed."), true);
         return true;
     }
@@ -198,6 +199,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             }
             this.level.playSound(null, this.worldPosition, SoundEvents.VILLAGER_CELEBRATE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
             this.changed();
+            this.ensureOffers();
             return true;
         }
         if (!module.hasWorkstation() && held.getItem() instanceof BlockItem blockItem && module.isValidBlock(blockItem.getBlock())) {
@@ -206,6 +208,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
                 held.shrink(1);
             }
             this.changed();
+            this.ensureOffers();
             return true;
         }
         return false;
@@ -216,6 +219,7 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
             player.displayClientMessage(Component.literal("Put an Easy Villagers Trader or Auto Trader in first (right-click with it)."), true);
             return;
         }
+        this.ensureOffers();
         VillageMenus.openWindow(player, this);
     }
 
@@ -251,9 +255,39 @@ public final class VillageChamberBlockEntity extends NetworkBlockEntity {
         return this.trades;
     }
 
+    /**
+     * The villager's offers. They are made on the server the first time they are asked for; a client
+     * copy only has them once the server sent them, and asking before that throws, so it gets none yet.
+     */
     public MerchantOffers offers() {
         EasyVillagerEntity villager = this.villager();
-        return villager == null ? new MerchantOffers() : villager.getOffers();
+        if (villager == null) {
+            return new MerchantOffers();
+        }
+        try {
+            MerchantOffers offers = villager.getOffers();
+            return offers == null ? new MerchantOffers() : offers;
+        } catch (IllegalStateException notOnTheClientYet) {
+            return new MerchantOffers();
+        }
+    }
+
+    /** Server: has the villager make its offers and sends them to the clients, so the window has something to show. */
+    private void ensureOffers() {
+        if (this.level == null || this.level.isClientSide) {
+            return;
+        }
+        TraderTileentityBase module = this.inner();
+        if (module != null && module.hasVillager() && module.hasWorkstation()) {
+            EasyVillagerEntity villager = module.getVillagerEntity();
+            int before = villager.getVillagerXp();
+            villager.getOffers();
+            if (before >= 0) {
+                module.saveVillagerEntity();
+                this.setChanged();
+                this.sync();
+            }
+        }
     }
 
     public String workstationName() {
