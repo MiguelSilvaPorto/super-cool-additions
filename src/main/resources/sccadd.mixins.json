@@ -9,7 +9,8 @@
     "NetworkBlockEntityInvoker",
     "TerminalAe2PatternsMixin",
     "Ae2ProviderPatternsMixin",
-    "Ae2NodePatternsMixin"
+    "Ae2NodePatternsMixin",
+    "Ae2ProviderDebugMixin"
   ],
   "client": [
     "client.CraftSimAe2Mixin",

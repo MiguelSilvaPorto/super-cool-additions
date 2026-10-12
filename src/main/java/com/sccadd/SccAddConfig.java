@@ -18,6 +18,7 @@ public final class SccAddConfig {
 
     public static final ModConfigSpec.BooleanValue AE2_PATTERNS_IN_SCC;
     public static final ModConfigSpec.BooleanValue SCC_PATTERNS_IN_AE2;
+    public static final ModConfigSpec.BooleanValue AE2_DEBUG_OFFER;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
 
@@ -80,6 +81,11 @@ public final class SccAddConfig {
                         "Lets AE2 plan the full tree through SCC instead of a leaf it cannot break down.")
                 .define("sccPatternsInAe2", true);
 
+        AE2_DEBUG_OFFER = builder
+                .comment("Write the state of the 'what can SCC build' offer to logs/scc.log every 5 seconds.",
+                        "Diagnosis aid: shows active/cpus/terminal/offer/emitted. Turn off when done.")
+                .define("debugOffer", true);
+
         builder.pop();
 
         builder.comment(
@@ -132,6 +138,10 @@ public final class SccAddConfig {
 
     public static boolean sccPatternsInAe2() {
         return SCC_PATTERNS_IN_AE2.get();
+    }
+
+    public static boolean ae2DebugOffer() {
+        return AE2_DEBUG_OFFER.get();
     }
 
     public static boolean resilientAnalysisCache() {
