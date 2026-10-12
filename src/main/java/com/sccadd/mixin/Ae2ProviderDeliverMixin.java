@@ -54,6 +54,7 @@ public abstract class Ae2ProviderDeliverMixin {
 
     @Inject(method = "tick", at = @At("TAIL"), require = 0)
     private void sccadd$deliverPatternOutputs(CallbackInfo ci) {
+        com.sccadd.ae2.BridgeGuardWatchdog.check();
         if (!SccAddConfig.sccPatternsInAe2()) {
             return;
         }

@@ -144,6 +144,7 @@ public final class ReceiverBridge implements IInWorldGridNodeHost, IStorageProvi
     }
 
     void tick() {
+        com.sccadd.ae2.BridgeGuardWatchdog.check();
         Level level = this.be.getLevel();
         if (!(level instanceof ServerLevel server)) {
             return;
