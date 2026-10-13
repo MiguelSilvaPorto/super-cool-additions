@@ -39,6 +39,10 @@ public final class SccAddConfig {
     public static final ModConfigSpec.BooleanValue AE2_RECEIVER_READS_ME;
     public static final ModConfigSpec.BooleanValue AE2_FLUIDS;
     public static final ModConfigSpec.BooleanValue AE2_OFFER_REQUIRES_STOCK;
+    public static final ModConfigSpec.BooleanValue AE2_FIBER_POWER;
+    public static final ModConfigSpec.IntValue AE2_FIBER_FE_PER_TICK;
+    public static final ModConfigSpec.BooleanValue AE2_FIBER_DEBUG;
+    public static final ModConfigSpec.BooleanValue AE2_DISTRIBUTOR_IGNORES_AE2;
     public static final ModConfigSpec.BooleanValue PLANNER_SMART_PICK;
 
     public static final ModConfigSpec.BooleanValue ANALYSIS_RESILIENT_CACHE;
@@ -186,6 +190,36 @@ public final class SccAddConfig {
                         "lists items that cannot be built right now. Turn off to offer everything",
                         "SCC could build if AE2 supplied the ingredients (hybrid mode).")
                 .define("offerRequiresStock", true);
+
+        AE2_FIBER_POWER = builder
+                .comment("Let a Quartz Fiber feed the SCC network from the ME network (AE to FE).",
+                        "Put an AE2 cable with a Quartz Fiber against any SCC network block (cable,",
+                        "cable bus, storage, storage connector, controller, interface): the block pulls",
+                        "AE out of the ME network the fiber touches and hands FE to the whole SCC network.",
+                        "Only the Quartz Fiber connects - a plain AE2 cable next to an SCC block does not.",
+                        "The ratio is AE2's own (2 FE per AE by default), the one the antenna uses the other",
+                        "way around. The fiber only replaces what the network consumed, so it cannot drain",
+                        "an ME network into a buffer that never fills. Does nothing while SCC 'power' is",
+                        "off in scc-server.json.")
+                .define("fiberPower", true);
+
+        AE2_FIBER_FE_PER_TICK = builder
+                .comment("Hard cap in FE per tick for each SCC network fed by fibers (0 = no cap).",
+                        "The cap is per network and per tick, shared by all fibers on it.")
+                .defineInRange("fiberFePerTick", 0, 0, Integer.MAX_VALUE);
+
+        AE2_FIBER_DEBUG = builder
+                .comment("Write what the fiber bridge does to logs/scc.log (at most one line every 5 s).")
+                .define("fiberDebug", false);
+
+        AE2_DISTRIBUTOR_IGNORES_AE2 = builder
+                .comment("Keep the Stellar Distributor away from AE2 blocks that accept FE",
+                        "(the Energy Acceptor part and the FE P2P tunnel on an AE2 cable bus).",
+                        "The distributor would push into the ME network at its own rate - unlimited on",
+                        "the Singularity tier - and the fiber would hand that power back to the SCC",
+                        "network: an endless loop of energy in and out. The antenna stays as the normal",
+                        "SCC to ME path (pull based, paid in FE per AE).")
+                .define("distributorIgnoresAe2", true);
 
         builder.pop();
 
@@ -408,6 +442,22 @@ public final class SccAddConfig {
         return AE2_OFFER_REQUIRES_STOCK.get();
     }
 
+    public static boolean ae2FiberPower() {
+        return AE2_FIBER_POWER.get();
+    }
+
+    public static int ae2FiberFePerTick() {
+        return AE2_FIBER_FE_PER_TICK.get();
+    }
+
+    public static boolean ae2FiberDebug() {
+        return AE2_FIBER_DEBUG.get();
+    }
+
+    public static boolean distributorIgnoresAe2() {
+        return AE2_DISTRIBUTOR_IGNORES_AE2.get();
+    }
+
     public static boolean smartPlanner() {
         return PLANNER_SMART_PICK.get();
     }
@@ -436,6 +486,7 @@ public final class SccAddConfig {
     public static boolean resilientAnalysisCache() {
         return ANALYSIS_RESILIENT_CACHE.get();
     }
+
     public static boolean villageEnergy() {
         return VILLAGE_ENERGY.get();
     }

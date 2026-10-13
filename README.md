@@ -8,6 +8,7 @@ O que o addon traz:
 2. **Integração profunda com o AE2** — receitas, itens e fluidos nos dois sentidos, Inscriber/Charger e prensas reaproveitáveis.
 3. **Requester** — campos digitados, cadeias de produção e o botão Pensar.
 4. **Terminal e ferramentas** — filtro avançado, editor de barra, terminal de bolso com regras por slot, ímã, tanques de fluido no Interface e máquina escolhida na Processing Calculator.
+5. **Energia do AE2 para o SCC** — Quartz Fiber no ME alimenta a rede SCC (2 FE por AE), sem laço com o Stellar Distributor.
 5. **Aba criativa própria** — a aba **SCC Additions** no inventário criativo, logo depois da aba do SCC, com os itens do addon e as máquinas do SCC que ele melhora.
 
 - Minecraft **1.21.1** / NeoForge **21.1.251**
@@ -138,6 +139,37 @@ Config: `[ae2] bridgeOnReceiver` (padrão `true`). Com dois pares transmissor/re
 O receptor também lê a rede ME para dentro do SCC: os itens do AE2 contam como estoque SCC, sem Conector de Armazenamento. Config: `[ae2] receiverReadsMe` (padrão `true`).
 
 > A Antena de Rede continua funcionando como sempre; quem preferir o fluxo antigo é só desligar esta opção.
+
+### 2.5 Energia: o ME alimenta a rede SCC pelo Quartz Fiber (novo no addon)
+
+O AE2 não manda FE para fora — mas o **Quartz Fiber** existe justamente para passar *só energia*
+entre duas redes. Agora ele também liga o **ME → rede SCC**:
+
+1. Leve um cabo AE2 com um **Quartz Fiber** encostado num bloco da rede SCC
+   (`scc:cable`, `scc:cable_bus`, `scc:scc_storage`, `scc:storage_connector`,
+   `scc:calculator_controller` ou `scc:interface`).
+2. Esse bloco passa a puxar AE do ME que o fiber toca e entrega FE para a **rede SCC inteira**
+   (2 FE por AE — a mesma conta que a Antena usa no sentido contrário, lida do próprio AE2).
+3. O painel de energia do controller mostra a fonte **AE2** com a taxa que entrou.
+
+- **Só o Quartz Fiber liga**: cabo AE2 comum encostado num bloco SCC não puxa nada.
+- **Sem dreno e sem laço**: o fiber só repõe o que a rede consumiu (buffer finito também enche; buffer
+  infinito, tipo Singularity, nunca é enchido à toa), e com `"power": false` no `scc-server.json` ele
+  fica inativo — nesse modo a Antena devolve AE de graça, então converter isso em FE criaria energia.
+- Config `[ae2]`: `fiberPower` (liga/desliga), `fiberFePerTick` (teto de FE/t por rede; 0 = sem teto),
+  `fiberDebug` (linhas no `logs/scc.log`).
+
+> **Laço com o Stellar Distributor**: com o módulo de FE, o Distributor empurrava FE para blocos do AE2
+> que aceitam FE (o **Energy Acceptor** e o FE P2P num cable bus) — sem teto na tier Singularity. Com a
+> ponte do fiber, essa energia voltava para a rede SCC e ficava circulando para sempre. Agora o
+> Distributor **não considera mais** blocos do AE2 como alvo (config `[ae2] distributorIgnoresAe2`);
+> a Antena continua sendo o caminho normal SCC → ME, que é puxado pelo ME e pago em FE por AE.
+> Diagnóstico: `/sccadd fibertest` monta uma bancada e responde as três perguntas no chat.
+
+> **Chunk parado = sem energia**: o AE2 só cria os nós do grid no *tick do chunk*. Num pedaço do mapa
+> que não está tickando (ninguém por perto), a ponte fica quieta — é o mesmo comportamento de qualquer
+> máquina do AE2. Chegue perto (ou use `/forceload add`) e ela volta sozinha. O `/sccadd fibertest`
+> deixa o chunk da bancada forçado para o teste.
 
 ---
 

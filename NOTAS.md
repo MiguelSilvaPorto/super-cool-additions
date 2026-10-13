@@ -20,6 +20,14 @@ Estado em 12/10/2026. 101 arquivos, 16 opções de config, ~36 commits.
    - Filtro de oferta pelo estoque real (reusa `CraftSim.reach` do SCC) e pelo botão
      "Only with ingredients" do próprio SCC.
    - Planejador inteligente (2+ jogadores), watchdog da `BridgeGuard`.
+   - **Energia ME → SCC pelo Quartz Fiber** (novo): o fiber encostado num bloco da
+     encanação (`cable`, `cable_bus`, `scc_storage`, `storage_connector`, `controller`,
+     `interface`) puxa AE do ME e entrega FE à rede SCC (2 FE/AE), só repondo o
+     consumo; e o **Stellar Distributor** deixa de mirar blocos do AE2 que aceitam FE
+     (`Energy Acceptor`/FE P2P), que era o laço SCC → distributor → ME → fiber → SCC.
+     Diagnóstico: `/sccadd fibertest`. *Verificado num servidor dev com a bancada do
+     `fibertest` (guarda do distributor, só-fiber, e 1 M FE chegando na storage);
+     falta testar no mundo do jogador.*
 
 3. **Cache de análise resiliente** — versões de mods/configs viram "soft" (usa o
    cache na hora + refresh em background). Validado no ATM10 (cache em 904 ms).
@@ -76,3 +84,7 @@ Estado em 12/10/2026. 101 arquivos, 16 opções de config, ~36 commits.
 - [ ] Interface: tanques/templates.
 - [ ] Ímã.
 - [ ] Buffer cheio do breaking (para por falta de espaço).
+- [ ] **Energia ME → SCC (Quartz Fiber)** e a guarda do Distributor: `/sccadd fibertest`
+      (bancada + 3 perguntas) e, no mundo real, fiber encostado num cabo SCC com
+      `"power": true`; conferir a fonte "AE2" no painel do controller e o não-dreno do ME.
+      *Bancada do `fibertest` já passou no servidor dev; o mundo do jogador ainda não.*

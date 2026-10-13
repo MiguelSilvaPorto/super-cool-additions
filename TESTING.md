@@ -73,7 +73,25 @@ um contêiner em cima para a saída.
 - [ ] Inscriber: `@ae2 proce` mostra os processadores como craftáveis; prensa dentro da máquina não gera pedido de outra; prensa errada volta para a rede.
 - [ ] Ímã puxa itens soltos até 16 blocos.
 
-## 7. Relatar
+## 7. Energia: Quartz Fiber (ME → SCC) e o laço do Stellar Distributor
+
+Bancada: no `scc-server.json` deixe `"power": true` (com power desligado o bridge fica inativo de propósito).
+
+- [ ] Cabo AE2 com **Quartz Fiber** encostado num bloco da rede SCC (cabo, cable bus, armazenamento,
+      conector de armazenamento, controller ou interface): o painel de energia do controller mostra a
+      fonte **AE2** alimentando a rede (2 FE por AE).
+- [ ] Cabo AE2 **sem** fiber encostado num bloco SCC: nada é puxado (só o Quartz Fiber liga).
+- [ ] Rede SCC cheia: o fiber **não** drena o ME (só repõe o consumo do tick).
+- [ ] Armazenamento infinito (Singularity/creative): o nível não sobe por causa do fiber.
+- [ ] `[ae2] fiberPower = false` para tudo; `fiberFePerTick = 1000` limita a 1000 FE/t por rede.
+- [ ] **Stellar Distributor com módulo de FE** perto de um **Energy Acceptor** do AE2: o distributor
+      ignora o bloco do AE2 (deixa de empurrar FE sem teto para o ME). Com
+      `[ae2] distributorIgnoresAe2 = false` o comportamento antigo volta (dá para ver a diferença).
+- [ ] `/sccadd fibertest` (afastado de construções): monta a bancada, responde as três perguntas e
+      espera a energia chegar (até 10 s), então diz quanto entrou; `keep` mantém os blocos. Ele força
+      o chunk do teste, porque o AE2 só cria os nós do grid no tick do chunk.
+
+## 8. Relatar
 
 Para qualquer problema, mande:
 

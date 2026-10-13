@@ -18,6 +18,8 @@
     "PlanAnswerMixin",
     "Ae2ReceiverTickMixin",
     "Ae2ReceiverRemoveMixin",
+    "Ae2FiberRemoveMixin",
+    "Ae2DistributorScanMixin",
     "Ae2FluidConnectorMixin",
     "Ae2ConnectorStateMixin",
     "ConnectorAllowsInvoker",

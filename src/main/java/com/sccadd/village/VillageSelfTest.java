@@ -166,6 +166,26 @@ final class VillageSelfTest {
                     + ", shape " + com.sccadd.iface.CompactInterface.BLOCK.get().defaultBlockState().getShape(level, at).bounds());
             level.setBlockAndUpdate(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
         }
+        {
+            var level = event.getServer().overworld();
+            var at = new net.minecraft.core.BlockPos(42, 120, 40);
+            level.setBlockAndUpdate(at, de.scc.calculator.network.SccRegistry.STORAGE_CONNECTOR.get().defaultBlockState());
+            var connector = (de.scc.calculator.network.StorageConnectorBlockEntity) level.getBlockEntity(at);
+            var filter = connector.filter();
+            var window = (com.sccadd.iface.FilterWindow) (Object) filter;
+            connector.setFilterEntry(40, "minecraft:stone");
+            var tag = connector.saveWithFullMetadata(level.registryAccess());
+            var back = (de.scc.calculator.network.StorageConnectorBlockEntity) level.getBlockEntity(at);
+            back.loadWithComponents(tag, level.registryAccess());
+            window.sccadd$setBase(36);
+            System.out.println("VILLAGETEST connector filter: capacity " + window.sccadd$capacity() + ", slot 40 -> '" + back.filter().entry(4)
+                    + "', accepts stone " + back.filter().accepts(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE))
+                    + ", firstFree on page 5 " + back.filter().firstFree());
+            window.sccadd$setBase(0);
+            var plain = new de.scc.calculator.network.ItemFilter();
+            System.out.println("VILLAGETEST plain filter capacity " + ((com.sccadd.iface.FilterWindow) (Object) plain).sccadd$capacity());
+            level.setBlockAndUpdate(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        }
         for (String bench : new String[] {"composter", "cartography_table", "lectern", "blast_furnace"}) {
             run(source, bench, false);
         }
